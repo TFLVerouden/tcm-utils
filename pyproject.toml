@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcm-utils"
+version = "0.1.0"
+description = "Shared utilities for Twente Cough Machine projects"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "daltonlens",
+    "matplotlib>=3.5",
+    "numpy>=1.21",
+    "pillow",
+]

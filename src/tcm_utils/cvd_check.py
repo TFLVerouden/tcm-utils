@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from daltonlens import simulate
 from PIL import Image
 import numpy as np
@@ -8,9 +9,10 @@ import matplotlib
 # Set of functions to check whether Tommie can distinguish the lines in your
 # plot. Based on the DaltonLens-Python library, tested on the mpl_colorcycle.png
 # file from the matplotlib repository (containing the default colorcycle), using
-# the MacBook screen. With the below settings, the output image is identical
-# to the original for Tommie. Conclusion: when skipping green, purple, brown and
-# pink, there are still six colours that he can distinguish.
+# the MacBook screen. With the settings as specified in scripts/run_cvd_demo,
+# the output image is identical to the original for Tommie. Conclusion: when
+# skipping green, purple, brown and pink, there are still six colours that he
+# can distinguish.
 
 # Note that the colour rendering of the screen is an important factor too;
 # beamers are notoriously bad at this. To be completely sure, you can generate a
@@ -58,7 +60,7 @@ def simulate_cvd(image_array, deficiency="PROTAN", severity=0.6):
 
 
 def simulate_cvd_on_file(file_path, deficiency="PROTAN", severity=0.6,
-                         suffix="_cvdsim"):
+                         suffix="_cvdsim", output_dir=None):
     """
     Simulates colorblindness on an image file and saves the result with a
     suffix. Not tested on filetypes that are not png.
@@ -69,11 +71,14 @@ def simulate_cvd_on_file(file_path, deficiency="PROTAN", severity=0.6,
     :param severity: Severity of the colorblindness (default: 0.6).
         Ignored for monochrome.
     :param suffix: Suffix to append to the output file name (default: "_cvd").
+    :param output_dir: Optional directory to save the output file. Defaults to
+        the directory of file_path.
 
     :return: Path of the saved image with the suffix.
     """
     # Load the image
-    image = Image.open(file_path).convert("RGB")
+    image_path = Path(file_path).expanduser().resolve()
+    image = Image.open(image_path).convert("RGB")
     image_array = np.array(image)
 
     # Simulate colorblindness
@@ -83,15 +88,16 @@ def simulate_cvd_on_file(file_path, deficiency="PROTAN", severity=0.6,
     simulated_image = Image.fromarray(np.uint8(simulated_array))
 
     # Ensure the output directory exists
-    output_dir = os.path.dirname(file_path)
-    os.makedirs(output_dir) if not os.path.exists(output_dir) else None
+    target_dir = Path(output_dir).expanduser() if output_dir else image_path.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the image with "_cvd" suffix
-    base, ext = os.path.splitext(file_path)
-    simulated_image.save(f"{base}{suffix}{ext}")
+    base, ext = os.path.splitext(image_path.name)
+    target_path = target_dir / f"{base}{suffix}{ext}"
+    simulated_image.save(target_path)
 
     # Return the path of the saved image
-    return f"{base}{suffix}{ext}"
+    return str(target_path)
 
 
 def set_cvd_friendly_colors(style="adjusted", do_reset=False, do_print=False):
@@ -158,84 +164,3 @@ def get_color(n):
     """
     current_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     return current_colors[n % len(current_colors)]
-
-
-if __name__ == "__main__":
-    # Define a function to plot the color cycle
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import TABLEAU_COLORS
-
-
-    def plot_color_cycle(output_path, title="Colors in the property cycle"):
-        """
-        Plots the current Matplotlib color cycle with TABLEAU_COLORS names and saves the figure.
-
-        :param output_path: Path to save the output image.
-        :param title: Title of the plot.
-        """
-
-        def f(xi, a):
-            """A sigmoid-like parametrized curve."""
-            return 0.85 * a * (1 / (1 + np.exp(-xi)) + 0.2)
-
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.axis('off')
-        ax.set_title(title)
-
-        prop_cycle = plt.rcParams['axes.prop_cycle']
-        colors = prop_cycle.by_key()['color']
-        x = np.linspace(-4, 4, 200)
-
-        # Match colors with TABLEAU_COLORS names
-        tableau_colors = {color: name for name, color in TABLEAU_COLORS.items()}
-        matched_colors = [tableau_colors.get(color, "unnamed") for color in
-                          colors]
-
-        # Calculate dynamic y-spacing to center the lines
-        num_colors = len(colors)
-        y_positions = np.linspace(num_colors / 2, -num_colors / 2, num_colors)
-
-        for i, (color, color_name, pos) in enumerate(
-                zip(colors, matched_colors, y_positions)):
-            ax.plot(x, f(x, pos), color=color)
-            ax.text(4.2, pos, f"'C{i}': '{color_name}'", color=color,
-                    va="center")
-            ax.bar(9, 1, width=2, bottom=pos - 0.5, color=color)
-
-        # Ensure the output directory exists
-        output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
-
-        fig.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-
-    # Path to the mpl_colorcycle.png file
-    cvd_check_image = "cvd_check/color_cycle.png"
-
-    # Generate the default color cycle plot
-    plot_color_cycle(cvd_check_image,
-                     title="Colors in the default property cycle")
-
-    # Simulate colorblindness and generate a monochrome version
-    cvd_image = simulate_cvd_on_file(cvd_check_image)
-    monochrome_image = simulate_cvd_on_file(cvd_check_image,
-                                            deficiency="MONOCHROME",
-                                            suffix="_mono")
-    print(f"Colorblindness simulation and monochrome image saved.")
-
-    # Adjust the color cycle and generate the adjusted plot
-    adjusted_image = "cvd_check/color_cycles/removed_colors.png"
-    set_cvd_friendly_colors(do_print=True)
-    plot_color_cycle(adjusted_image,
-                     title="Colors in the adjusted property cycle")
-
-    # Also make a version using the tableau-colorblind10 colors
-    adjusted_image2 = "cvd_check/color_cycles/tableau-colorblind10.png"
-    set_cvd_friendly_colors(style="tableau-colorblind10", do_print=True)
-    plot_color_cycle(adjusted_image2,
-                     title="Colors in the tableau_colorblind10 property cycle")
-
-    # Reset the color cycle to default and print it
-    set_cvd_friendly_colors(do_reset=True, do_print=True)

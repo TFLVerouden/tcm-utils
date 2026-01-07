@@ -1,0 +1,874 @@
+{
+  "timestamp": "20250927_132350",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "20260107_170556",
+  "input_file_original": "docs/cihx_analysis/raw_data/example.cihx",
+  "camera_metadata": {
+    "date": "2025/8/8",
+    "time": "14:49:11",
+    "deviceName": "FASTCAM Nova S16 type 1100K-M-32GB 10GbE model",
+    "firmware": "3.1.6",
+    "recordRate": "20000",
+    "shutterSpeedNsec": "12500",
+    "totalFrame": "3001",
+    "resolution": {
+      "width": "1024",
+      "height": "768"
+    },
+    "effectiveBit": {
+      "depth": "12",
+      "side": "Higher"
+    },
+    "fileFormat": "Tiff",
+    "flipH": "false",
+    "flipV": "true",
+    "rotate": "0.0"
+  },
+  "all_metadata_keys": {
+    "cih.fileInfo.version": "1.0",
+    "cih.fileInfo.date": "2025/8/8",
+    "cih.fileInfo.time": "14:49:11",
+    "cih.fileInfo.PDCVersion": "4.0.6.2",
+    "cih.fileInfo.pfvVersion": "4.0.6.2",
+    "cih.imageFileInfo.digitsOfFileNumber": "6",
+    "cih.imageFileInfo.fileFormat": "Tiff",
+    "cih.imageFileInfo.resolution.width": "1024",
+    "cih.imageFileInfo.resolution.height": "768",
+    "cih.imageDataInfo.resolution.width": "1024",
+    "cih.imageDataInfo.resolution.height": "768",
+    "cih.imageDataInfo.colorInfo.type": "Mono",
+    "cih.imageDataInfo.colorInfo.bit": "16",
+    "cih.imageDataInfo.effectiveBit.depth": "12",
+    "cih.imageDataInfo.effectiveBit.side": "Higher",
+    "cih.imageDataInfo.applyImageProc": "0",
+    "cih.imageDataInfo.segmentPos.sensorXpos": "0",
+    "cih.imageDataInfo.segmentPos.sensorYpos": "128",
+    "cih.frameInfo.recordedFrame": "29095",
+    "cih.frameInfo.totalFrame": "3001",
+    "cih.frameInfo.startFrame": "0",
+    "cih.frameInfo.skipFrame": "1",
+    "cih.frameInfo.adjustTriggerPoint": "0",
+    "cih.frameInfo.playbackEndFrameNo": "3000",
+    "cih.frameInfo.playbackStartFrameNo": "0",
+    "cih.frameInfo.saveEndFrameNo": "29094",
+    "cih.frameInfo.saveStartFrameNo": "0",
+    "cih.recordInfo.recordRate": "20000",
+    "cih.recordInfo.shutterSpeed": "80000",
+    "cih.recordInfo.shutterSpeedNsec": "12500",
+    "cih.recordInfo.triggerMode.pdcMode": "0",
+    "cih.recordInfo.lockTriggerParam": "2",
+    "cih.recordInfo.timeCode.type": "0",
+    "cih.recordInfo.timeCode.displayUnit": "deg",
+    "cih.recordInfo.timeCode.perFrames": "0",
+    "cih.recordInfo.timeCode.startValue": "0",
+    "cih.recordInfo.timeCode.unitReset": "0",
+    "cih.recordInfo.timeCode.reset": "1",
+    "cih.recordInfo.timeCode.currentTime.decimalPlace": "0",
+    "cih.recordInfo.timeCode.currentTime.maxDisplayUnit": "4",
+    "cih.recordInfo.timeCode.currentTime.decimalDivide": "0",
+    "cih.recordInfo.temperature.head.triggerIns.triggerIn.cpu": "48",
+    "cih.recordInfo.temperature.head.triggerIns.triggerIn.sen": "39",
+    "cih.recordInfo.temperature.head.triggerIns.triggerIn.fan": "24",
+    "cih.deviceInfo.camMode": "0",
+    "cih.deviceInfo.ipAddress": "192.168.0.10",
+    "cih.deviceInfo.subnetMask": "255.255.255.0",
+    "cih.deviceInfo.gatewayAddress": "0.0.0.0",
+    "cih.deviceInfo.firmware": "3.1.6",
+    "cih.deviceInfo.deviceCode": "39",
+    "cih.deviceInfo.deviceName": "FASTCAM Nova S16 type 1100K-M-32GB 10GbE model",
+    "cih.deviceInfo.headNumber": "1",
+    "cih.deviceInfo.headType": "0",
+    "cih.deviceInfo.irig": "0",
+    "cih.deviceInfo.irigOffset": "0",
+    "cih.deviceInfo.irigPhaseLock": "0",
+    "cih.deviceInfo.irigSampleMode": "0",
+    "cih.deviceInfo.autoExposure": "0",
+    "cih.deviceInfo.autoExposureInfo.width": "0",
+    "cih.deviceInfo.autoExposureInfo.height": "0",
+    "cih.deviceInfo.autoExposureInfo.xPos": "0",
+    "cih.deviceInfo.autoExposureInfo.yPos": "0",
+    "cih.deviceInfo.autoExposureInfo.value": "0",
+    "cih.deviceInfo.autoExposureInfo.range": "0",
+    "cih.deviceInfo.autoExposureInfo.limit": "0",
+    "cih.deviceInfo.temperature.head.downloads.download.sen": "42.000000",
+    "cih.deviceInfo.temperature.head.downloads.download.cpu": "36.000000",
+    "cih.deviceInfo.temperature.head.downloads.download.fan": "25.000000",
+    "cih.deviceInfo.lowFrameRateMode": "0",
+    "cih.deviceInfo.recordRate": "20000",
+    "cih.deviceInfo.resolution.width": "1024",
+    "cih.deviceInfo.resolution.height": "768",
+    "cih.deviceInfo.variableChannel": "0",
+    "cih.deviceInfo.shutterSpeed": "80000",
+    "cih.deviceInfo.totalPartition": "1",
+    "cih.deviceInfo.currentPartition": "1",
+    "cih.deviceInfo.lockedResolution": "0",
+    "cih.deviceInfo.lockedShutterSpeed": "0",
+    "cih.deviceInfo.dsShutterValue": "0",
+    "cih.deviceInfo.triggerMode.pdcMode": "0",
+    "cih.deviceInfo.pixelGainMode": "1",
+    "cih.deviceInfo.mechaShutterMode": "1",
+    "cih.deviceInfo.recordingType": "2",
+    "cih.deviceInfo.partitionIncMode": "0",
+    "cih.deviceInfo.autoDownloadMode": "0",
+    "cih.deviceInfo.syncOutTimes": "1",
+    "cih.deviceInfo.downloadMode": "2",
+    "cih.deviceInfo.fanRecReadyStop": "0",
+    "cih.deviceInfo.shutterSpeedPrecision": "1",
+    "cih.deviceInfo.externalInInfos.externalInInfo": [
+      {
+        "port": "1",
+        "mode": "12"
+      },
+      {
+        "port": "2",
+        "mode": "8"
+      },
+      {
+        "port": "3",
+        "mode": "1"
+      },
+      {
+        "port": "4",
+        "mode": "16"
+      }
+    ],
+    "cih.deviceInfo.externalInInfos.externalInInfo[0].port": "1",
+    "cih.deviceInfo.externalInInfos.externalInInfo[0].mode": "12",
+    "cih.deviceInfo.externalInInfos.externalInInfo[1].port": "2",
+    "cih.deviceInfo.externalInInfos.externalInInfo[1].mode": "8",
+    "cih.deviceInfo.externalInInfos.externalInInfo[2].port": "3",
+    "cih.deviceInfo.externalInInfos.externalInInfo[2].mode": "1",
+    "cih.deviceInfo.externalInInfos.externalInInfo[3].port": "4",
+    "cih.deviceInfo.externalInInfos.externalInInfo[3].mode": "16",
+    "cih.deviceInfo.externalOutInfos.externalOutInfo": [
+      {
+        "port": "1",
+        "mode": "1",
+        "syncExposeOutput": "0"
+      },
+      {
+        "port": "2",
+        "mode": "5",
+        "syncExposeOutput": "0"
+      }
+    ],
+    "cih.deviceInfo.externalOutInfos.externalOutInfo[0].port": "1",
+    "cih.deviceInfo.externalOutInfos.externalOutInfo[0].mode": "1",
+    "cih.deviceInfo.externalOutInfos.externalOutInfo[0].syncExposeOutput": "0",
+    "cih.deviceInfo.externalOutInfos.externalOutInfo[1].port": "2",
+    "cih.deviceInfo.externalOutInfos.externalOutInfo[1].mode": "5",
+    "cih.deviceInfo.externalOutInfos.externalOutInfo[1].syncExposeOutput": "0",
+    "cih.deviceInfo.delayInfos.delayInfo": [
+      {
+        "signal": "1",
+        "value": "0"
+      },
+      {
+        "signal": "2",
+        "value": "0"
+      },
+      {
+        "signal": "3",
+        "value": "0"
+      },
+      {
+        "signal": "4",
+        "value": "1"
+      },
+      {
+        "signal": "5",
+        "value": "0"
+      },
+      {
+        "signal": "6",
+        "value": "1"
+      },
+      {
+        "signal": "7",
+        "value": "0"
+      }
+    ],
+    "cih.deviceInfo.delayInfos.delayInfo[0].signal": "1",
+    "cih.deviceInfo.delayInfos.delayInfo[0].value": "0",
+    "cih.deviceInfo.delayInfos.delayInfo[1].signal": "2",
+    "cih.deviceInfo.delayInfos.delayInfo[1].value": "0",
+    "cih.deviceInfo.delayInfos.delayInfo[2].signal": "3",
+    "cih.deviceInfo.delayInfos.delayInfo[2].value": "0",
+    "cih.deviceInfo.delayInfos.delayInfo[3].signal": "4",
+    "cih.deviceInfo.delayInfos.delayInfo[3].value": "1",
+    "cih.deviceInfo.delayInfos.delayInfo[4].signal": "5",
+    "cih.deviceInfo.delayInfos.delayInfo[4].value": "0",
+    "cih.deviceInfo.delayInfos.delayInfo[5].signal": "6",
+    "cih.deviceInfo.delayInfos.delayInfo[5].value": "1",
+    "cih.deviceInfo.delayInfos.delayInfo[6].signal": "7",
+    "cih.deviceInfo.delayInfos.delayInfo[6].value": "0",
+    "cih.basicInfo.cameraName": "Camera_1",
+    "cih.basicInfo.logoPath": "C:/Program Files/Photron/Photron FASTCAM Viewer 4/logo/photron_white_128.png",
+    "cih.playbackInfo.repeat": "1",
+    "cih.playbackInfo.skip": "0",
+    "cih.playbackInfo.skipFrame": "20",
+    "cih.playbackInfo.skipUnit": "0",
+    "cih.plugin.histogram.enable": "true",
+    "cih.plugin.histogram.area": "0",
+    "cih.plugin.histogram.averageFrame": "1",
+    "cih.plugin.histogram.targetLevel": "0",
+    "cih.plugin.histogram.viewMin": "0",
+    "cih.plugin.histogram.viewMax": "1",
+    "cih.plugin.histogram.log": "false",
+    "cih.plugin.histogram.mode": "0",
+    "cih.plugin.luminance.partitionNumber": "0",
+    "cih.plugin.luminance.area": "0",
+    "cih.plugin.lineprofile.averageFrame": "1",
+    "cih.plugin.lineprofile.lockVert": "false",
+    "cih.plugin.lineprofile.zoomVert": "false",
+    "cih.plugin.geometry.rotate": "0.0",
+    "cih.plugin.geometry.flipH": "false",
+    "cih.plugin.geometry.flipV": "true",
+    "cih.plugin.geometry.zoomrate": "1",
+    "cih.plugin.geometry.pan.x": "-231",
+    "cih.plugin.geometry.pan.y": "109",
+    "cih.plugin.crosscursor.activeCursorNo": "1",
+    "cih.plugin.lut.enable": "false",
+    "cih.plugin.lut.lutMode": "0",
+    "cih.plugin.lut.cropMode": "0",
+    "cih.plugin.lut.channel": "3",
+    "cih.plugin.lut.expandParam.low": "0",
+    "cih.plugin.lut.expandParam.high": "10",
+    "cih.plugin.lut.expandCurve.low": "0",
+    "cih.plugin.lut.expandCurve.high": "255",
+    "cih.plugin.lut.rect.x": "256",
+    "cih.plugin.lut.rect.y": "256",
+    "cih.plugin.lut.rect.w": "512",
+    "cih.plugin.lut.rect.h": "512",
+    "cih.plugin.lut.paramsMode": "USER",
+    "cih.plugin.lut.interpolation": "0",
+    "cih.plugin.lut.palletR": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,",
+    "cih.plugin.lut.palletG": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,",
+    "cih.plugin.lut.palletB": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,",
+    "cih.plugin.lut.curvePtR": "0:0,256:256,",
+    "cih.plugin.lut.curvePtG": "0:0,256:256,",
+    "cih.plugin.lut.curvePtB": "0:0,256:256,",
+    "cih.plugin.lut.DEF1.gainR": "1",
+    "cih.plugin.lut.DEF1.gainG": "1",
+    "cih.plugin.lut.DEF1.gainB": "1",
+    "cih.plugin.lut.DEF1.gammaR": "1",
+    "cih.plugin.lut.DEF1.gammaG": "1",
+    "cih.plugin.lut.DEF1.gammaB": "1",
+    "cih.plugin.lut.DEF1.contrastR": "0",
+    "cih.plugin.lut.DEF1.contrastG": "0",
+    "cih.plugin.lut.DEF1.contrastB": "0",
+    "cih.plugin.lut.DEF1.brightnessR": "0",
+    "cih.plugin.lut.DEF1.brightnessG": "0",
+    "cih.plugin.lut.DEF1.brightnessB": "0",
+    "cih.plugin.lut.DEF1.isNegativeR": "false",
+    "cih.plugin.lut.DEF1.isNegativeG": "false",
+    "cih.plugin.lut.DEF1.isNegativeB": "false",
+    "cih.plugin.lut.DEF1.isFreeCurve": "false",
+    "cih.plugin.lut.DEF2.gainR": "1",
+    "cih.plugin.lut.DEF2.gainG": "1",
+    "cih.plugin.lut.DEF2.gainB": "1",
+    "cih.plugin.lut.DEF2.gammaR": "0.600000024",
+    "cih.plugin.lut.DEF2.gammaG": "0.600000024",
+    "cih.plugin.lut.DEF2.gammaB": "0.600000024",
+    "cih.plugin.lut.DEF2.contrastR": "0",
+    "cih.plugin.lut.DEF2.contrastG": "0",
+    "cih.plugin.lut.DEF2.contrastB": "0",
+    "cih.plugin.lut.DEF2.brightnessR": "0",
+    "cih.plugin.lut.DEF2.brightnessG": "0",
+    "cih.plugin.lut.DEF2.brightnessB": "0",
+    "cih.plugin.lut.DEF2.isNegativeR": "false",
+    "cih.plugin.lut.DEF2.isNegativeG": "false",
+    "cih.plugin.lut.DEF2.isNegativeB": "false",
+    "cih.plugin.lut.DEF2.isFreeCurve": "false",
+    "cih.plugin.lut.DEF3.gainR": "1",
+    "cih.plugin.lut.DEF3.gainG": "1",
+    "cih.plugin.lut.DEF3.gainB": "1",
+    "cih.plugin.lut.DEF3.gammaR": "0.449999988",
+    "cih.plugin.lut.DEF3.gammaG": "0.449999988",
+    "cih.plugin.lut.DEF3.gammaB": "0.449999988",
+    "cih.plugin.lut.DEF3.contrastR": "0",
+    "cih.plugin.lut.DEF3.contrastG": "0",
+    "cih.plugin.lut.DEF3.contrastB": "0",
+    "cih.plugin.lut.DEF3.brightnessR": "0",
+    "cih.plugin.lut.DEF3.brightnessG": "0",
+    "cih.plugin.lut.DEF3.brightnessB": "0",
+    "cih.plugin.lut.DEF3.isNegativeR": "false",
+    "cih.plugin.lut.DEF3.isNegativeG": "false",
+    "cih.plugin.lut.DEF3.isNegativeB": "false",
+    "cih.plugin.lut.DEF3.isFreeCurve": "false",
+    "cih.plugin.lut.DEF4.gainR": "2",
+    "cih.plugin.lut.DEF4.gainG": "2",
+    "cih.plugin.lut.DEF4.gainB": "2",
+    "cih.plugin.lut.DEF4.gammaR": "1",
+    "cih.plugin.lut.DEF4.gammaG": "1",
+    "cih.plugin.lut.DEF4.gammaB": "1",
+    "cih.plugin.lut.DEF4.contrastR": "0",
+    "cih.plugin.lut.DEF4.contrastG": "0",
+    "cih.plugin.lut.DEF4.contrastB": "0",
+    "cih.plugin.lut.DEF4.brightnessR": "0",
+    "cih.plugin.lut.DEF4.brightnessG": "0",
+    "cih.plugin.lut.DEF4.brightnessB": "0",
+    "cih.plugin.lut.DEF4.isNegativeR": "false",
+    "cih.plugin.lut.DEF4.isNegativeG": "false",
+    "cih.plugin.lut.DEF4.isNegativeB": "false",
+    "cih.plugin.lut.DEF4.isFreeCurve": "false",
+    "cih.plugin.lut.DEF5.gainR": "4",
+    "cih.plugin.lut.DEF5.gainG": "4",
+    "cih.plugin.lut.DEF5.gainB": "4",
+    "cih.plugin.lut.DEF5.gammaR": "1",
+    "cih.plugin.lut.DEF5.gammaG": "1",
+    "cih.plugin.lut.DEF5.gammaB": "1",
+    "cih.plugin.lut.DEF5.contrastR": "0",
+    "cih.plugin.lut.DEF5.contrastG": "0",
+    "cih.plugin.lut.DEF5.contrastB": "0",
+    "cih.plugin.lut.DEF5.brightnessR": "0",
+    "cih.plugin.lut.DEF5.brightnessG": "0",
+    "cih.plugin.lut.DEF5.brightnessB": "0",
+    "cih.plugin.lut.DEF5.isNegativeR": "false",
+    "cih.plugin.lut.DEF5.isNegativeG": "false",
+    "cih.plugin.lut.DEF5.isNegativeB": "false",
+    "cih.plugin.lut.DEF5.isFreeCurve": "false",
+    "cih.plugin.lut.DEF6.gainR": "1",
+    "cih.plugin.lut.DEF6.gainG": "1",
+    "cih.plugin.lut.DEF6.gainB": "1",
+    "cih.plugin.lut.DEF6.gammaR": "1",
+    "cih.plugin.lut.DEF6.gammaG": "1",
+    "cih.plugin.lut.DEF6.gammaB": "1",
+    "cih.plugin.lut.DEF6.contrastR": "0",
+    "cih.plugin.lut.DEF6.contrastG": "0",
+    "cih.plugin.lut.DEF6.contrastB": "0",
+    "cih.plugin.lut.DEF6.brightnessR": "0",
+    "cih.plugin.lut.DEF6.brightnessG": "0",
+    "cih.plugin.lut.DEF6.brightnessB": "0",
+    "cih.plugin.lut.DEF6.isNegativeR": "true",
+    "cih.plugin.lut.DEF6.isNegativeG": "true",
+    "cih.plugin.lut.DEF6.isNegativeB": "true",
+    "cih.plugin.lut.DEF6.isFreeCurve": "false",
+    "cih.plugin.lut.USER.gainR": "1",
+    "cih.plugin.lut.USER.gainG": "1",
+    "cih.plugin.lut.USER.gainB": "1",
+    "cih.plugin.lut.USER.gammaR": "1",
+    "cih.plugin.lut.USER.gammaG": "1",
+    "cih.plugin.lut.USER.gammaB": "1",
+    "cih.plugin.lut.USER.contrastR": "0.48046875",
+    "cih.plugin.lut.USER.contrastG": "0.48046875",
+    "cih.plugin.lut.USER.contrastB": "0.48046875",
+    "cih.plugin.lut.USER.brightnessR": "0.48046875",
+    "cih.plugin.lut.USER.brightnessG": "0.48046875",
+    "cih.plugin.lut.USER.brightnessB": "0.48046875",
+    "cih.plugin.lut.USER.isNegativeR": "false",
+    "cih.plugin.lut.USER.isNegativeG": "false",
+    "cih.plugin.lut.USER.isNegativeB": "false",
+    "cih.plugin.lut.USER.isFreeCurve": "false",
+    "cih.plugin.colorcorrection.saturation": "1",
+    "cih.plugin.calibration.distanceUnit": null,
+    "cih.plugin.calibration.scaleMode": "0",
+    "cih.plugin.calibration.sizeOfPixel": "1.0",
+    "cih.plugin.calibration.magnification": "1.0",
+    "cih.plugin.calibration.grid": "false",
+    "cih.plugin.calibration.gridWidth": "10",
+    "cih.plugin.calibration.ruler": "false",
+    "cih.plugin.calibration.rulerWidth": "10",
+    "cih.plugin.calibration.auxLine": "false",
+    "cih.plugin.calibration.auxLineWidth": "1",
+    "cih.plugin.calibration.manualType": "0",
+    "cih.plugin.calibration.resetDragSize": "true",
+    "cih.plugin.calibration.enableCoordinateSystem": "false",
+    "cih.plugin.selectarea.rect.x": "320",
+    "cih.plugin.selectarea.rect.y": "388",
+    "cih.plugin.selectarea.rect.w": "384",
+    "cih.plugin.selectarea.rect.h": "248",
+    "cih.plugin.selectarea.fixAspect": "false",
+    "cih.plugin.selectarea.originalAspect": "false",
+    "cih.plugin.focusassist.coeff": "100",
+    "cih.plugin.imageoverlay.opacity": "50",
+    "cih.plugin.imageoverlay.invert": "0",
+    "cih.plugin.imageoverlay.startAdjustPoint": "447.5|511.5",
+    "cih.plugin.imageoverlay.endAdjustPoint": "575.5|511.5",
+    "cih.plugin.pseudocolor.viewrangemin": "0",
+    "cih.plugin.pseudocolor.viewrangemax": "1",
+    "cih.plugin.pseudocolor.colorrangemin": "0",
+    "cih.plugin.pseudocolor.colorrangemax": "1",
+    "cih.plugin.pseudocolor.mode": "0",
+    "cih.plugin.backgroundremove.thresholdmin": "0.0784313753",
+    "cih.plugin.backgroundremove.thresholdmax": "0.313725501",
+    "cih.plugin.binning.enable": "true",
+    "cih.plugin.binning.binningSize": "0",
+    "cih.plugin.warp.unit": "Milimeters (mm)",
+    "cih.plugin.manualtracking.viewAllFrame": "false",
+    "cih.plugin.manualtracking.displayCoordinates": "false",
+    "cih.plugin.livecontrol.lowlight.type": "3"
+  },
+  "raw_xml_structure": {
+    "cih": {
+      "fileInfo": {
+        "version": "1.0",
+        "date": "2025/8/8",
+        "time": "14:49:11",
+        "PDCVersion": "4.0.6.2",
+        "pfvVersion": "4.0.6.2"
+      },
+      "imageFileInfo": {
+        "digitsOfFileNumber": "6",
+        "fileFormat": "Tiff",
+        "resolution": {
+          "width": "1024",
+          "height": "768"
+        }
+      },
+      "imageDataInfo": {
+        "resolution": {
+          "width": "1024",
+          "height": "768"
+        },
+        "colorInfo": {
+          "type": "Mono",
+          "bit": "16"
+        },
+        "effectiveBit": {
+          "depth": "12",
+          "side": "Higher"
+        },
+        "applyImageProc": "0",
+        "segmentPos": {
+          "sensorXpos": "0",
+          "sensorYpos": "128"
+        }
+      },
+      "frameInfo": {
+        "recordedFrame": "29095",
+        "totalFrame": "3001",
+        "startFrame": "0",
+        "skipFrame": "1",
+        "adjustTriggerPoint": "0",
+        "playbackEndFrameNo": "3000",
+        "playbackStartFrameNo": "0",
+        "saveEndFrameNo": "29094",
+        "saveStartFrameNo": "0"
+      },
+      "recordInfo": {
+        "recordRate": "20000",
+        "shutterSpeed": "80000",
+        "shutterSpeedNsec": "12500",
+        "triggerMode": {
+          "pdcMode": "0"
+        },
+        "lockTriggerParam": "2",
+        "timeCode": {
+          "type": "0",
+          "displayUnit": "deg",
+          "perFrames": "0",
+          "startValue": "0",
+          "unitReset": "0",
+          "reset": "1",
+          "currentTime": {
+            "decimalPlace": "0",
+            "maxDisplayUnit": "4",
+            "decimalDivide": "0"
+          }
+        },
+        "temperature": {
+          "head": {
+            "triggerIns": {
+              "triggerIn": {
+                "cpu": "48",
+                "sen": "39",
+                "fan": "24"
+              }
+            }
+          }
+        }
+      },
+      "deviceInfo": {
+        "camMode": "0",
+        "ipAddress": "192.168.0.10",
+        "subnetMask": "255.255.255.0",
+        "gatewayAddress": "0.0.0.0",
+        "firmware": "3.1.6",
+        "deviceCode": "39",
+        "deviceName": "FASTCAM Nova S16 type 1100K-M-32GB 10GbE model",
+        "headNumber": "1",
+        "headType": "0",
+        "irig": "0",
+        "irigOffset": "0",
+        "irigPhaseLock": "0",
+        "irigSampleMode": "0",
+        "autoExposure": "0",
+        "autoExposureInfo": {
+          "width": "0",
+          "height": "0",
+          "xPos": "0",
+          "yPos": "0",
+          "value": "0",
+          "range": "0",
+          "limit": "0"
+        },
+        "temperature": {
+          "head": {
+            "downloads": {
+              "download": {
+                "sen": "42.000000",
+                "cpu": "36.000000",
+                "fan": "25.000000"
+              }
+            }
+          }
+        },
+        "lowFrameRateMode": "0",
+        "recordRate": "20000",
+        "resolution": {
+          "width": "1024",
+          "height": "768"
+        },
+        "variableChannel": "0",
+        "shutterSpeed": "80000",
+        "totalPartition": "1",
+        "currentPartition": "1",
+        "lockedResolution": "0",
+        "lockedShutterSpeed": "0",
+        "dsShutterValue": "0",
+        "triggerMode": {
+          "pdcMode": "0"
+        },
+        "pixelGainMode": "1",
+        "mechaShutterMode": "1",
+        "recordingType": "2",
+        "partitionIncMode": "0",
+        "autoDownloadMode": "0",
+        "syncOutTimes": "1",
+        "downloadMode": "2",
+        "fanRecReadyStop": "0",
+        "shutterSpeedPrecision": "1",
+        "externalInInfos": {
+          "externalInInfo": [
+            {
+              "port": "1",
+              "mode": "12"
+            },
+            {
+              "port": "2",
+              "mode": "8"
+            },
+            {
+              "port": "3",
+              "mode": "1"
+            },
+            {
+              "port": "4",
+              "mode": "16"
+            }
+          ]
+        },
+        "externalOutInfos": {
+          "externalOutInfo": [
+            {
+              "port": "1",
+              "mode": "1",
+              "syncExposeOutput": "0"
+            },
+            {
+              "port": "2",
+              "mode": "5",
+              "syncExposeOutput": "0"
+            }
+          ]
+        },
+        "delayInfos": {
+          "delayInfo": [
+            {
+              "signal": "1",
+              "value": "0"
+            },
+            {
+              "signal": "2",
+              "value": "0"
+            },
+            {
+              "signal": "3",
+              "value": "0"
+            },
+            {
+              "signal": "4",
+              "value": "1"
+            },
+            {
+              "signal": "5",
+              "value": "0"
+            },
+            {
+              "signal": "6",
+              "value": "1"
+            },
+            {
+              "signal": "7",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "basicInfo": {
+        "cameraName": "Camera_1",
+        "logoPath": "C:/Program Files/Photron/Photron FASTCAM Viewer 4/logo/photron_white_128.png"
+      },
+      "playbackInfo": {
+        "repeat": "1",
+        "skip": "0",
+        "skipFrame": "20",
+        "skipUnit": "0"
+      },
+      "plugin": {
+        "histogram": {
+          "enable": "true",
+          "area": "0",
+          "averageFrame": "1",
+          "targetLevel": "0",
+          "viewMin": "0",
+          "viewMax": "1",
+          "log": "false",
+          "mode": "0"
+        },
+        "luminance": {
+          "partitionNumber": "0",
+          "area": "0"
+        },
+        "lineprofile": {
+          "averageFrame": "1",
+          "lockVert": "false",
+          "zoomVert": "false"
+        },
+        "geometry": {
+          "rotate": "0.0",
+          "flipH": "false",
+          "flipV": "true",
+          "zoomrate": "1",
+          "pan": {
+            "x": "-231",
+            "y": "109"
+          }
+        },
+        "crosscursor": {
+          "activeCursorNo": "1"
+        },
+        "lut": {
+          "enable": "false",
+          "lutMode": "0",
+          "cropMode": "0",
+          "channel": "3",
+          "expandParam": {
+            "low": "0",
+            "high": "10"
+          },
+          "expandCurve": {
+            "low": "0",
+            "high": "255"
+          },
+          "rect": {
+            "x": "256",
+            "y": "256",
+            "w": "512",
+            "h": "512"
+          },
+          "paramsMode": "USER",
+          "interpolation": "0",
+          "palletR": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,",
+          "palletG": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,",
+          "palletB": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,",
+          "curvePtR": "0:0,256:256,",
+          "curvePtG": "0:0,256:256,",
+          "curvePtB": "0:0,256:256,",
+          "DEF1": {
+            "gainR": "1",
+            "gainG": "1",
+            "gainB": "1",
+            "gammaR": "1",
+            "gammaG": "1",
+            "gammaB": "1",
+            "contrastR": "0",
+            "contrastG": "0",
+            "contrastB": "0",
+            "brightnessR": "0",
+            "brightnessG": "0",
+            "brightnessB": "0",
+            "isNegativeR": "false",
+            "isNegativeG": "false",
+            "isNegativeB": "false",
+            "isFreeCurve": "false"
+          },
+          "DEF2": {
+            "gainR": "1",
+            "gainG": "1",
+            "gainB": "1",
+            "gammaR": "0.600000024",
+            "gammaG": "0.600000024",
+            "gammaB": "0.600000024",
+            "contrastR": "0",
+            "contrastG": "0",
+            "contrastB": "0",
+            "brightnessR": "0",
+            "brightnessG": "0",
+            "brightnessB": "0",
+            "isNegativeR": "false",
+            "isNegativeG": "false",
+            "isNegativeB": "false",
+            "isFreeCurve": "false"
+          },
+          "DEF3": {
+            "gainR": "1",
+            "gainG": "1",
+            "gainB": "1",
+            "gammaR": "0.449999988",
+            "gammaG": "0.449999988",
+            "gammaB": "0.449999988",
+            "contrastR": "0",
+            "contrastG": "0",
+            "contrastB": "0",
+            "brightnessR": "0",
+            "brightnessG": "0",
+            "brightnessB": "0",
+            "isNegativeR": "false",
+            "isNegativeG": "false",
+            "isNegativeB": "false",
+            "isFreeCurve": "false"
+          },
+          "DEF4": {
+            "gainR": "2",
+            "gainG": "2",
+            "gainB": "2",
+            "gammaR": "1",
+            "gammaG": "1",
+            "gammaB": "1",
+            "contrastR": "0",
+            "contrastG": "0",
+            "contrastB": "0",
+            "brightnessR": "0",
+            "brightnessG": "0",
+            "brightnessB": "0",
+            "isNegativeR": "false",
+            "isNegativeG": "false",
+            "isNegativeB": "false",
+            "isFreeCurve": "false"
+          },
+          "DEF5": {
+            "gainR": "4",
+            "gainG": "4",
+            "gainB": "4",
+            "gammaR": "1",
+            "gammaG": "1",
+            "gammaB": "1",
+            "contrastR": "0",
+            "contrastG": "0",
+            "contrastB": "0",
+            "brightnessR": "0",
+            "brightnessG": "0",
+            "brightnessB": "0",
+            "isNegativeR": "false",
+            "isNegativeG": "false",
+            "isNegativeB": "false",
+            "isFreeCurve": "false"
+          },
+          "DEF6": {
+            "gainR": "1",
+            "gainG": "1",
+            "gainB": "1",
+            "gammaR": "1",
+            "gammaG": "1",
+            "gammaB": "1",
+            "contrastR": "0",
+            "contrastG": "0",
+            "contrastB": "0",
+            "brightnessR": "0",
+            "brightnessG": "0",
+            "brightnessB": "0",
+            "isNegativeR": "true",
+            "isNegativeG": "true",
+            "isNegativeB": "true",
+            "isFreeCurve": "false"
+          },
+          "USER": {
+            "gainR": "1",
+            "gainG": "1",
+            "gainB": "1",
+            "gammaR": "1",
+            "gammaG": "1",
+            "gammaB": "1",
+            "contrastR": "0.48046875",
+            "contrastG": "0.48046875",
+            "contrastB": "0.48046875",
+            "brightnessR": "0.48046875",
+            "brightnessG": "0.48046875",
+            "brightnessB": "0.48046875",
+            "isNegativeR": "false",
+            "isNegativeG": "false",
+            "isNegativeB": "false",
+            "isFreeCurve": "false"
+          }
+        },
+        "colorcorrection": {
+          "saturation": "1"
+        },
+        "calibration": {
+          "distanceUnit": null,
+          "scaleMode": "0",
+          "sizeOfPixel": "1.0",
+          "magnification": "1.0",
+          "grid": "false",
+          "gridWidth": "10",
+          "ruler": "false",
+          "rulerWidth": "10",
+          "auxLine": "false",
+          "auxLineWidth": "1",
+          "manualType": "0",
+          "resetDragSize": "true",
+          "enableCoordinateSystem": "false"
+        },
+        "selectarea": {
+          "rect": {
+            "x": "320",
+            "y": "388",
+            "w": "384",
+            "h": "248"
+          },
+          "fixAspect": "false",
+          "originalAspect": "false"
+        },
+        "focusassist": {
+          "coeff": "100"
+        },
+        "imageoverlay": {
+          "opacity": "50",
+          "invert": "0",
+          "startAdjustPoint": "447.5|511.5",
+          "endAdjustPoint": "575.5|511.5"
+        },
+        "pseudocolor": {
+          "viewrangemin": "0",
+          "viewrangemax": "1",
+          "colorrangemin": "0",
+          "colorrangemax": "1",
+          "mode": "0"
+        },
+        "backgroundremove": {
+          "thresholdmin": "0.0784313753",
+          "thresholdmax": "0.313725501"
+        },
+        "binning": {
+          "enable": "true",
+          "binningSize": "0"
+        },
+        "warp": {
+          "unit": "Milimeters (mm)"
+        },
+        "manualtracking": {
+          "viewAllFrame": "false",
+          "displayCoordinates": "false"
+        },
+        "livecontrol": {
+          "lowlight": {
+            "type": "3"
+          }
+        }
+      }
+    }
+  },
+  "raw_data_path": "examples/read_cihx_outputs/raw_data/example.cihx"
+}

@@ -425,3 +425,48 @@ def run_calibration(
     print(
         f"Estimated scale: {mm_per_px:.6f} mm/px (spacing {spacing_px:.3f} px)")
     return 0
+
+
+def ensure_calibration_metadata(
+    input_path: Path | None = None,
+    distance_mm: float = 0.5,
+    invert: bool = True,
+    adaptive: bool = False,
+    min_area: float = 3.0,
+    max_area: float = 2000.0,
+    timestamp_source: str = "file",
+    output_dir: Path | None = None,
+) -> Path | None:
+    """Return existing calibration metadata path or run calibration to create it.
+
+    Searches the output directory for the newest ``*_metadata.json``. If none
+    are found, executes ``run_calibration`` with the provided arguments and
+    returns the newly created metadata path. Returns ``None`` if calibration
+    did not produce a metadata file.
+    """
+
+    repo_root = find_repo_root(Path(__file__))
+    default_output = repo_root / "examples" / "calibration_demo"
+    output_folder = (output_dir or default_output)
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    def _find_latest_metadata(folder: Path) -> Path | None:
+        files = sorted(folder.glob("*_metadata.json"))
+        return files[-1] if files else None
+
+    existing = _find_latest_metadata(output_folder)
+    if existing:
+        return existing
+
+    run_calibration(
+        input_path=input_path,
+        distance_mm=distance_mm,
+        invert=invert,
+        adaptive=adaptive,
+        min_area=min_area,
+        max_area=max_area,
+        timestamp_source=timestamp_source,
+        output_dir=output_folder,
+    )
+
+    return _find_latest_metadata(output_folder)

@@ -88,3 +88,38 @@ def ask_open_file(
     chosen_path = Path(selected).expanduser().resolve()
     _remember_last_dir(config_path, config, key, chosen_path.parent)
     return chosen_path
+
+
+def ask_directory(
+    key: str,
+    title: str = "Select directory",
+    default_dir: Path | None = None,
+    start: Path | None = None,
+) -> Path | None:
+    """Open a directory picker, remembering the last chosen location per key."""
+    repo_root = find_repo_root(start)
+    config_path = _config_path(repo_root)
+    config = _load_config(config_path)
+
+    fallback_dir = default_dir or repo_root
+    initial_dir = _get_last_dir(config, key, fallback_dir)
+
+    root = Tk()
+    root.overrideredirect(True)
+    root.geometry('0x0+0+0')
+    root.withdraw()
+
+    try:
+        root.eval('tk::PlaceWindow . center')
+    except Exception:
+        pass
+
+    selected = filedialog.askdirectory(title=title, initialdir=str(initial_dir))
+    root.destroy()
+
+    if not selected:
+        return None
+
+    chosen_path = Path(selected).expanduser().resolve()
+    _remember_last_dir(config_path, config, key, chosen_path)
+    return chosen_path

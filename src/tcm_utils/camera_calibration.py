@@ -8,7 +8,7 @@ import cv2 as cv
 import tifffile
 import matplotlib.pyplot as plt
 
-from tcm_utils.file_dialogs import ask_open_file, find_repo_root
+from tcm_utils.file_dialogs import ask_open_file, ask_directory, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
     path_relative_to,
@@ -446,8 +446,20 @@ def ensure_calibration_metadata(
     """
 
     repo_root = find_repo_root(Path(__file__))
-    default_output = repo_root / "examples" / "calibration_demo"
-    output_folder = (output_dir or default_output)
+    if output_dir is None:
+        chosen = ask_directory(
+            key="camera_calibration_output",
+            title="Select output directory for calibration results",
+            default_dir=repo_root,
+            start=Path(__file__),
+        )
+        if not chosen:
+            print("No output directory selected.")
+            return None
+        output_folder = Path(chosen).expanduser().resolve()
+    else:
+        output_folder = output_dir
+
     output_folder.mkdir(parents=True, exist_ok=True)
 
     def _find_latest_metadata(folder: Path) -> Path | None:

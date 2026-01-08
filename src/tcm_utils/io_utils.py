@@ -53,17 +53,17 @@ def save_metadata_json(
     return output_path
 
 
-def move_to_raw_subfolder(
+def copy_file_to_raw_subfolder(
     file_path: Path,
     output_folder: Path,
     raw_subfolder_name: str = "raw_data",
 ) -> Path:
-    """Move a file to a raw data subfolder within the output folder.
+    """Copy a file to a raw data subfolder within the output folder.
 
     Parameters
     ----------
     file_path : Path
-        Path to the file to move
+        Path to the file to copy (source is left untouched)
     output_folder : Path
         Parent folder where the raw subfolder should be created
     raw_subfolder_name : str
@@ -72,16 +72,16 @@ def move_to_raw_subfolder(
     Returns
     -------
     Path
-        Path to the moved file
+        Path to the copied file in the raw_data folder
     """
     raw_dir = output_folder / raw_subfolder_name
     raw_dir.mkdir(parents=True, exist_ok=True)
-    moved_path = raw_dir / file_path.name
+    copied_path = raw_dir / file_path.name
 
-    if file_path.resolve() != moved_path.resolve():
-        shutil.move(str(file_path), str(moved_path))
+    if file_path.resolve() != copied_path.resolve():
+        shutil.copy2(file_path, copied_path)
 
-    return moved_path
+    return copied_path
 
 
 def create_timestamped_filename(

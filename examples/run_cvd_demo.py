@@ -63,7 +63,6 @@ if __name__ == "__main__":
 
     if not selected:
         print("No file selected; exiting.")
-    
     else:
         selected_path = Path(selected).expanduser().resolve()
         print(f"Selected image: {selected_path}")

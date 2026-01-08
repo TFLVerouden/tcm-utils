@@ -8,7 +8,7 @@ from pathlib import Path
 from tcm_utils.io_utils import (
     path_relative_to,
     save_metadata_json,
-    move_to_raw_subfolder,
+    copy_file_to_raw_subfolder,
     create_timestamped_filename,
 )
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
@@ -196,11 +196,12 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
         except Exception:
             repo_root = filepath.parent
 
-        # Move raw file if requested
+        # Copy raw file if requested
         moved_raw_path = None
         if move_raw:
-            moved_raw_path = move_to_raw_subfolder(filepath, output_folder)
-            print(f"\nMoved original file to {moved_raw_path}")
+            moved_raw_path = copy_file_to_raw_subfolder(
+                filepath, output_folder)
+            print(f"\nCopied original file to {moved_raw_path}")
 
         # Create metadata output filename
         metadata_filename = create_timestamped_filename(

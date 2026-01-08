@@ -9,7 +9,7 @@ import matplotlib
 # Set of functions to check whether Tommie can distinguish the lines in your
 # plot. Based on the DaltonLens-Python library, tested on the mpl_colorcycle.png
 # file from the matplotlib repository (containing the default colorcycle), using
-# the MacBook screen. With the settings as specified in scripts/run_cvd_demo,
+# the MacBook screen. With the settings as specified in examples/run_cvd_demo,
 # the output image is identical to the original for Tommie. Conclusion: when
 # skipping green, purple, brown and pink, there are still six colours that he
 # can distinguish.

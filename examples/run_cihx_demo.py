@@ -2,7 +2,7 @@
 """
 Demo script for testing CIHX metadata extraction functionality.
 
-This script demonstrates the new JSON-based metadata export system
+This script demonstrates the JSON-based metadata export system
 and tests the updated read_cihx module.
 """
 from __future__ import annotations
@@ -11,7 +11,6 @@ from tcm_utils.read_cihx import extract_cihx_metadata, load_cihx_metadata
 
 import sys
 from pathlib import Path
-import json
 
 # Ensure local src/ is on the path when running from the repo
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +28,7 @@ def main() -> int:
     print("\nThis script demonstrates:")
     print("  1. Extracting metadata from .cihx files")
     print("  2. Saving metadata as JSON (not .npz)")
-    print("  3. Moving raw files to organized folders")
+    print("  3. Copying raw files to organized folders")
     print("  4. Using timestamps from file creation time")
     print("\n" + "=" * 60)
 
@@ -56,7 +55,7 @@ def main() -> int:
     print(f"Full path: {selected_file}")
 
     # Setup output directory
-    output_dir = repo_root / "examples" / "read_cihx_outputs"
+    output_dir = repo_root / "examples" / "cihx_demo_outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\nOutput directory: {output_dir}")
@@ -116,7 +115,7 @@ def main() -> int:
         print("=" * 60)
 
         print(f"\nOutput files location: {output_dir}")
-        print(f"Raw file moved to: {output_dir / 'raw_data'}")
+        print(f"Raw file copy in: {output_dir / 'raw_data'}")
 
     else:
         print("\nWarning: Could not find saved metadata file.")

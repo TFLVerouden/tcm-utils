@@ -1,0 +1,28 @@
+{
+  "timestamp": "20260108_141319",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "20260108_154002",
+  "input_file_original": "examples/calibration_demo/raw_data/calibration_image.tif",
+  "raw_data_path": "examples/calibration_demo/raw_data/calibration_image.tif",
+  "output_files": {
+    "plot_pdf": "examples/calibration_demo/calibration_image_20260108_141319_calibration_plot.pdf",
+    "calibration_csv": "examples/calibration_demo/calibration_image_20260108_141319_calibration.csv"
+  },
+  "calibration": {
+    "rows": 25,
+    "cols": 26,
+    "roi": {
+      "x": 209,
+      "y": 183,
+      "width": 860,
+      "height": 820
+    },
+    "spacing_px": 32.68106995884773,
+    "scale_mm_per_px": 0.015299376692060697,
+    "distance_mm_input": 0.5,
+    "image_size_px": {
+      "width": 1280,
+      "height": 1024
+    }
+  }
+}

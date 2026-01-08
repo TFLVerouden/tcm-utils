@@ -13,4 +13,7 @@ dependencies = [
     "matplotlib>=3.5",
     "numpy>=1.21",
     "pillow",
+    "tifffile",
+    "opencv-python",
+    "scikit-learn",
 ]

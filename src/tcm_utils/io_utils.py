@@ -116,3 +116,25 @@ def create_timestamped_filename(
     if not extension.startswith("."):
         extension = f".{extension}"
     return f"{base_name}_{timestamp}_{suffix}{extension}"
+
+
+def load_json_key(path: Path, key: str, default: Any | None = None) -> Any | None:
+    """Load a JSON file and return a top-level key value.
+
+    Parameters
+    ----------
+    path : Path
+        Path to the JSON file.
+    key : str
+        Top-level key to retrieve.
+    default : Any, optional
+        Value to return if the key is missing (default: None).
+
+    Returns
+    -------
+    Any | None
+        The value for the key if present, otherwise ``default``.
+    """
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return data.get(key, default)

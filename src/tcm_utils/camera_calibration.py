@@ -8,16 +8,14 @@ import cv2 as cv
 import tifffile
 import matplotlib.pyplot as plt
 
-from tcm_utils.file_dialogs import ask_open_file, ask_directory, find_repo_root
+from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
     path_relative_to,
     save_metadata_json,
     copy_file_to_raw_subfolder,
     create_timestamped_filename,
-    ensure_path_value,
-    resolve_existing_path,
-    find_latest_in_directory,
+    ensure_processed_artifact,
 )
 
 
@@ -441,7 +439,7 @@ def ensure_calibration(
     timestamp_source: str = "file",
     output_dir: Path | None = None,
 ) -> Path | None:
-    """Return a calibration metadata path or run calibration to create it.
+    """Return calibration metadata path or run calibration to create it.
 
     Resolution order (no subfolder scanning):
     1) If ``input_path`` is a ``*_metadata.json`` file, return it.
@@ -451,33 +449,11 @@ def ensure_calibration(
     5) Otherwise, ask the user to select a metadata JSON or calibration image file.
     """
 
-    candidate_path = resolve_existing_path(input_path)
+    repo_root = find_repo_root(Path(__file__))
+    default_output = repo_root / "examples" / "calibration_demo"
 
-    def _latest_metadata(folder: Path) -> Path | None:
-        return find_latest_in_directory(folder, "*_metadata.json")
-
-    def _latest_tif(folder: Path) -> Path | None:
-        return find_latest_in_directory(folder, ("*.tif", "*.tiff"))
-
-    def _resolve_output_folder(default_dir: Path) -> Path | None:
-        chosen = ensure_path_value(
-            value=output_dir,
-            key="camera_calibration_output",
-            title="Select output directory for calibration results",
-            default_dir=default_dir,
-        )
-
-        if chosen is None:
-            print("No output directory selected.")
-            return None
-
-        dest = Path(chosen).expanduser().resolve()
-        dest.mkdir(parents=True, exist_ok=True)
-        return dest
-
-    def _run_and_collect_metadata(image_path: Path, dest: Path) -> Path | None:
-        before = {p.resolve() for p in dest.glob("*_metadata.json")}
-        result = run_calibration(
+    def _runner(image_path: Path, dest: Path) -> int:
+        return run_calibration(
             input_path=image_path,
             distance_mm=distance_mm,
             invert=invert,
@@ -487,70 +463,22 @@ def ensure_calibration(
             timestamp_source=timestamp_source,
             output_dir=dest,
         )
-        if result != 0:
-            return None
 
-        created = [p for p in dest.glob(
-            "*_metadata.json") if p.resolve() not in before]
-        if created:
-            return max(created, key=lambda p: p.stat().st_mtime)
-
-        return _latest_metadata(dest)
-
-    # Check if input is already a metadata file
-    if candidate_path and candidate_path.is_file() and candidate_path.name.endswith("_metadata.json"):
-        return candidate_path
-
-    # Check for existing metadata in provided directory
-    if candidate_path and candidate_path.is_dir():
-        existing_metadata = _latest_metadata(candidate_path)
-        if existing_metadata:
-            return existing_metadata
-
-    # Check for image file to run calibration on
-    if candidate_path and candidate_path.is_file() and candidate_path.suffix.lower() in {".tif", ".tiff"}:
-        output_folder = _resolve_output_folder(candidate_path.parent)
-        if output_folder is None:
-            return None
-        return _run_and_collect_metadata(candidate_path, output_folder)
-
-    # Check for image file in provided directory to run calibration on
-    if candidate_path and candidate_path.is_dir():
-        tif_in_dir = _latest_tif(candidate_path)
-        if tif_in_dir:
-            output_folder = _resolve_output_folder(candidate_path)
-            if output_folder is None:
-                return None
-            return _run_and_collect_metadata(tif_in_dir, output_folder)
-
-    # Finally, prompt user to select a metadata or image file
-    else:
-        repo_root = find_repo_root(Path(__file__))
-        default_dir = output_dir or repo_root
-
-        selected_path = ask_open_file(
-            key="camera_calibration_metadata_or_image",
-            title="Select calibration metadata JSON or calibration image",
-            filetypes=[
-                ("Calibration metadata", "*_metadata.json"),
-                ("Image files", "*.tif *.tiff"),
-                ("All files", "*.*"),
-            ],
-            default_dir=default_dir,
-            start=Path(__file__).parent,
-        )
-
-        if selected_path is None:
-            print("No file selected.")
-            return None
-
-        selected_path = Path(selected_path).expanduser().resolve()
-
-        if selected_path.is_file() and selected_path.name.endswith("_metadata.json"):
-            return selected_path
-
-        if selected_path.is_file() and selected_path.suffix.lower() in {".tif", ".tiff"}:
-            output_folder = _resolve_output_folder(selected_path.parent)
-            if output_folder is None:
-                return None
-            return _run_and_collect_metadata(selected_path, output_folder)
+    return ensure_processed_artifact(
+        input_path=input_path,
+        output_dir=output_dir,
+        metadata_pattern="*_metadata.json",
+        source_patterns=("*.tif", "*.tiff"),
+        output_dir_key="camera_calibration_output",
+        output_dir_title="Select output directory for calibration results",
+        default_output_dir=default_output,
+        run_processor=_runner,
+        prompt_key="camera_calibration_metadata_or_image",
+        prompt_title="Select calibration metadata JSON or calibration image",
+        prompt_filetypes=[
+            ("Calibration metadata", "*_metadata.json"),
+            ("Image files", "*.tif *.tiff"),
+            ("All files", "*.*"),
+        ],
+        start_path=Path(__file__),
+    )

@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable, Sequence
 import numpy as np
 
-from tcm_utils.file_dialogs import ask_directory
+from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
 
 def path_relative_to(path: Path, root: Path) -> str:
@@ -202,3 +202,105 @@ def find_latest_in_directory(
         return None
 
     return max(matches, key=lambda p: p.stat().st_mtime)
+
+
+def ensure_processed_artifact(
+    *,
+    input_path: str | Path | None,
+    output_dir: str | Path | None,
+    metadata_pattern: str,
+    source_patterns: Sequence[str],
+    output_dir_key: str,
+    output_dir_title: str,
+    default_output_dir: Path,
+    run_processor: Callable[[Path, Path], Any],
+    prompt_key: str,
+    prompt_title: str,
+    prompt_filetypes: list[tuple[str, str]],
+    start_path: Path,
+) -> Path | None:
+    """Return metadata path, running processing if needed.
+
+    Resolution order (no subfolder scanning):
+    1) If ``input_path`` is a ``*_metadata.json`` file, return it.
+    2) If ``input_path`` is a folder containing ``*_metadata.json``, return the latest one.
+    3) If ``input_path`` is a matching source file, process it to ``output_dir`` (or prompt) and return the created metadata JSON.
+    4) If ``input_path`` is a folder containing a matching source file, process that file and return the created metadata JSON.
+    5) Otherwise, prompt the user to select a metadata JSON or source file.
+    """
+
+    def _latest_metadata(folder: Path) -> Path | None:
+        return find_latest_in_directory(folder, metadata_pattern)
+
+    def _latest_source(folder: Path) -> Path | None:
+        return find_latest_in_directory(folder, source_patterns)
+
+    def _resolve_output_folder(default_dir: Path) -> Path | None:
+        chosen = ensure_path_value(
+            value=output_dir,
+            key=output_dir_key,
+            title=output_dir_title,
+            default_dir=default_dir,
+        )
+        if chosen is None:
+            print("No output directory selected.")
+            return None
+        dest = Path(chosen).expanduser().resolve()
+        dest.mkdir(parents=True, exist_ok=True)
+        return dest
+
+    def _run_and_collect(source_path: Path, dest: Path) -> Path | None:
+        run_processor(source_path, dest)
+        metadata_path = _latest_metadata(dest)
+        if metadata_path:
+            copy_target = source_path.parent / metadata_path.name
+            if metadata_path.resolve() != copy_target.resolve():
+                shutil.copy2(metadata_path, copy_target)
+        return metadata_path
+
+    def _handle_candidate(path: Path | None) -> Path | None:
+        if path is None:
+            return None
+
+        if path.is_file() and path.name.endswith("_metadata.json"):
+            return path
+
+        if path.is_dir():
+            existing = _latest_metadata(path)
+            if existing:
+                return existing
+
+        if path.is_file() and any(path.match(pat) for pat in source_patterns):
+            output_folder = _resolve_output_folder(path.parent)
+            if output_folder is None:
+                return None
+            return _run_and_collect(path, output_folder)
+
+        if path.is_dir():
+            source_in_dir = _latest_source(path)
+            if source_in_dir:
+                output_folder = _resolve_output_folder(path)
+                if output_folder is None:
+                    return None
+                return _run_and_collect(source_in_dir, output_folder)
+
+        return None
+
+    candidate_path = resolve_existing_path(input_path)
+    result = _handle_candidate(candidate_path)
+    if result is not None:
+        return result
+
+    selection = ask_open_file(
+        key=prompt_key,
+        title=prompt_title,
+        filetypes=prompt_filetypes,
+        default_dir=default_output_dir,
+        start=start_path,
+    )
+    if not selection:
+        print("No file selected.")
+        return None
+
+    selection_path = resolve_existing_path(selection)
+    return _handle_candidate(selection_path)

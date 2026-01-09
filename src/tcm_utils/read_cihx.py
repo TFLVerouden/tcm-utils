@@ -4,15 +4,17 @@ import numpy as np
 import os
 import json
 from pathlib import Path
+import shutil
 
 from tcm_utils.io_utils import (
     path_relative_to,
     save_metadata_json,
     copy_file_to_raw_subfolder,
     create_timestamped_filename,
+    ensure_processed_artifact,
 )
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
-from tcm_utils.file_dialogs import find_repo_root
+from tcm_utils.file_dialogs import find_repo_root, ask_open_file
 
 
 def recursive_search(d, target):
@@ -332,6 +334,55 @@ def load_cihx_metadata(filepath):
 
     print(f"Loaded metadata from {filepath}")
     return loaded_data
+
+
+def ensure_cihx_processed(
+    input_path: Path | None = None,
+    output_dir: Path | None = None,
+    timestamp_source: str = "file",
+    copy_raw: bool = True,
+    verbose: bool = True,
+) -> Path | None:
+    """Return CIHX metadata path, extracting if necessary.
+
+    Resolution order (no subfolder scanning):
+    1) If ``input_path`` is a ``*_metadata.json`` file, return it.
+    2) If ``input_path`` is a folder containing ``*_metadata.json``, return the latest one.
+    3) If ``input_path`` is a ``.cihx/.cih`` file, extract metadata to ``output_dir`` (or prompt) and return the created JSON.
+    4) If ``input_path`` is a folder containing a ``.cihx/.cih`` file, extract and return the created JSON.
+    5) Otherwise, prompt the user to select a metadata JSON or CIHX file.
+    """
+
+    repo_root = find_repo_root(Path(__file__))
+    default_output = repo_root / "docs" / "cihx_analysis"
+
+    def _runner(cihx_path: Path, dest: Path) -> None:
+        extract_cihx_metadata(
+            filepath=cihx_path,
+            output_folder=dest,
+            save=True,
+            verbose=verbose,
+            timestamp_source=timestamp_source,
+            copy_raw=copy_raw,
+        )
+
+    return ensure_processed_artifact(
+        input_path=input_path,
+        output_dir=output_dir,
+        metadata_pattern="*_metadata.json",
+        source_patterns=("*.cihx", "*.cih"),
+        output_dir_key="cihx_output",
+        output_dir_title="Select output directory for CIHX metadata",
+        default_output_dir=default_output,
+        run_processor=_runner,
+        prompt_key="cihx_metadata_or_file",
+        prompt_title="Select CIHX metadata JSON or CIHX file",
+        prompt_filetypes=[
+            ("Metadata or CIHX", "*_metadata.json *.cihx *.cih"),
+            ("All files", "*.*"),
+        ],
+        start_path=Path(__file__),
+    )
 
 
 if __name__ == "__main__":

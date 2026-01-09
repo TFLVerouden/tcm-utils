@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 import numpy as np
+
+from tcm_utils.file_dialogs import ask_directory
 
 
 def path_relative_to(path: Path, root: Path) -> str:
@@ -138,3 +140,65 @@ def load_json_key(path: Path, key: str, default: Any | None = None) -> Any | Non
     with path.open("r", encoding="utf-8") as fh:
         data = json.load(fh)
     return data.get(key, default)
+
+
+def ensure_path_value(
+    value: str | Path | None,
+    key: str,
+    title: str | None = None,
+    default_dir: Path | None = None,
+) -> str | None:
+    """Return a usable path string, prompting the user if missing.
+
+    The caller supplies the current value (possibly empty/None/0). If it is
+    missing, the user is asked to pick a directory. The dialog title includes
+    the provided key to make the prompt clear.
+    """
+
+    is_missing = value is None or value == "" or value == 0
+    if is_missing:
+        selected = ask_directory(
+            key=key,
+            title=title or f"Select {key}",
+            default_dir=default_dir,
+        )
+        if selected is None:
+            print(f"WARNING: No {key} selected. Using default parameters.")
+            return None
+        return str(selected)
+
+    return str(Path(value).expanduser())
+
+
+def resolve_existing_path(value: str | Path | None) -> Path | None:
+    """Expand and resolve a path-like value if it exists, else return None."""
+
+    if value is None or value == "":
+        return None
+
+    candidate = Path(value).expanduser().resolve()
+    return candidate if candidate.exists() else None
+
+
+def find_latest_in_directory(
+    folder: Path,
+    pattern: str | Iterable[str],
+) -> Path | None:
+    """Return the most recently modified match for given glob pattern(s).
+
+    Only direct children are considered; subdirectories are not searched.
+    Accepts a single pattern (string) or an iterable of patterns.
+    """
+
+    if not folder.is_dir():
+        return None
+
+    patterns = (pattern,) if isinstance(pattern, str) else tuple(pattern)
+    matches: list[Path] = []
+    for pat in patterns:
+        matches.extend(folder.glob(pat))
+
+    if not matches:
+        return None
+
+    return max(matches, key=lambda p: p.stat().st_mtime)

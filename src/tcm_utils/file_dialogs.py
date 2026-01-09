@@ -51,7 +51,8 @@ def _remember_last_dir(config_path: Path, config: configparser.ConfigParser, key
 def ask_open_file(
     key: str,
     title: str,
-    filetypes: tuple[tuple[str, str], ...] | list[tuple[str, str]] = (("All files", "*.*"),),
+    filetypes: tuple[tuple[str, str], ...] | list[tuple[str, str]] = (
+        ("All files", "*.*"),),
     default_dir: Path | None = None,
     start: Path | None = None,
 ) -> Path | None:
@@ -67,14 +68,15 @@ def ask_open_file(
     root.overrideredirect(True)  # Remove window decorations
     root.geometry('0x0+0+0')  # Make it tiny and offscreen
     root.withdraw()
-    
+
     # Center the root window (helps with macOS dialog positioning)
     try:
         root.eval('tk::PlaceWindow . center')
     except Exception:
         pass  # Fallback if tk::PlaceWindow not available
-    
+
     # TODO: Test this on Windows
+    print(title)
     selected = filedialog.askopenfilename(
         title=title,
         initialdir=str(initial_dir),
@@ -114,7 +116,9 @@ def ask_directory(
     except Exception:
         pass
 
-    selected = filedialog.askdirectory(title=title, initialdir=str(initial_dir))
+    print(title)
+    selected = filedialog.askdirectory(
+        title=title, initialdir=str(initial_dir))
     root.destroy()
 
     if not selected:

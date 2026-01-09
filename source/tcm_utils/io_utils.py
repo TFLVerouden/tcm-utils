@@ -462,3 +462,35 @@ def load_images(
         images = list(iterator)
 
     return np.stack(images, axis=0)
+
+
+def load_metadata(filepath):
+    """
+    Load previously saved CIHX metadata from a JSON file.
+
+    Parameters
+    ----------
+    filepath : str or Path
+        Path to the JSON file containing saved metadata
+
+    Returns
+    -------
+    dict
+        Dictionary containing the loaded metadata
+    """
+    filepath = Path(filepath)
+
+    # Ensure file has correct extension
+    if not filepath.suffix == '.json':
+        filepath = filepath.with_suffix('.json')
+
+    # Check if file exists
+    if not filepath.exists():
+        raise FileNotFoundError(f"Metadata file not found: {filepath}")
+
+    # Load the data
+    with filepath.open('r', encoding='utf-8') as fh:
+        loaded_data = json.load(fh)
+
+    print(f"Loaded metadata from {filepath}")
+    return loaded_data

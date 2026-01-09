@@ -401,6 +401,8 @@ def run_calibration(
             "scale_mm_per_px": float(mm_per_px),
             "distance_mm_input": float(distance_mm),
             "image_size_px": {"width": int(img_w), "height": int(img_h)},
+            "image_size_m": {"width": float(img_w) * mm_per_px / 1000.0,
+                             "height": float(img_h) * mm_per_px / 1000.0},
         },
     }
 
@@ -472,3 +474,7 @@ def ensure_calibration(
         ],
         start_path=Path(__file__),
     )
+
+
+if __name__ == "__main__":
+    run_calibration()

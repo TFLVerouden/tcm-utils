@@ -16,6 +16,7 @@ dependencies = [
     "tifffile",
     "opencv-python",
     "scikit-learn",
+    "tqdm>=4.64",
 ]
 
 [tool.setuptools]

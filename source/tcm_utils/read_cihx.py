@@ -2,7 +2,6 @@ import re
 import xml.etree.ElementTree as ET
 import numpy as np
 import os
-import json
 from pathlib import Path
 import shutil
 
@@ -302,38 +301,6 @@ def list_all_metadata_keys(metadata_dict, prefix=""):
                 print(f"{new_prefix}: {v}")
     else:
         print(f"{prefix}: {metadata_dict}")
-
-
-def load_cihx_metadata(filepath):
-    """
-    Load previously saved CIHX metadata from a JSON file.
-
-    Parameters
-    ----------
-    filepath : str or Path
-        Path to the JSON file containing saved metadata
-
-    Returns
-    -------
-    dict
-        Dictionary containing the loaded metadata
-    """
-    filepath = Path(filepath)
-
-    # Ensure file has correct extension
-    if not filepath.suffix == '.json':
-        filepath = filepath.with_suffix('.json')
-
-    # Check if file exists
-    if not filepath.exists():
-        raise FileNotFoundError(f"Metadata file not found: {filepath}")
-
-    # Load the data
-    with filepath.open('r', encoding='utf-8') as fh:
-        loaded_data = json.load(fh)
-
-    print(f"Loaded metadata from {filepath}")
-    return loaded_data
 
 
 def ensure_cihx_processed(

@@ -5,12 +5,12 @@ from typing import Tuple
 
 import numpy as np
 import cv2 as cv
-import tifffile
 import matplotlib.pyplot as plt
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
+    load_image,
     path_relative_to,
     save_metadata_json,
     copy_file_to_raw_subfolder,
@@ -18,33 +18,6 @@ from tcm_utils.io_utils import (
     ensure_processed_artifact,
     prompt_input,
 )
-
-
-def _load_grayscale_image(path: Path) -> np.ndarray:
-    """Load image as uint8 grayscale.
-
-    Tries `tifffile` for TIFFs, otherwise uses OpenCV.
-    """
-    ext = path.suffix.lower()
-    img: np.ndarray
-    if ext in {".tif", ".tiff"}:
-        img = tifffile.imread(str(path))
-        if img.ndim == 3:
-            img = img[..., 0]
-    else:
-        loaded = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
-        if loaded is None:
-            raise FileNotFoundError(f"Failed to read image: {path}")
-        img = loaded
-
-    if img.dtype != np.uint8:
-        # Normalize to 0-255
-        img = img.astype(np.float32)
-        maxv = img.max() if img.size else 1.0
-        if maxv == 0:
-            maxv = 1.0
-        img = (img / maxv * 255.0).astype(np.uint8)
-    return img
 
 
 def detect_circle_centers(
@@ -273,7 +246,7 @@ def run_calibration(
         raise FileNotFoundError(f"Input file not found: {data_file}")
 
     # Load image
-    img = _load_grayscale_image(data_file)
+    img = load_image(data_file)
     img_h, img_w = img.shape[:2]
 
     # ROI selection

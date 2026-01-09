@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterable, Callable, Sequence, Literal
+
+import cv2 as cv
 import numpy as np
+import tifffile
+from tqdm import tqdm
 
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
+
+
+def prompt_yes_no(prompt: str) -> bool:
+    """Prompt the user for a yes/no response."""
+    answer = input(prompt).strip().lower()
+    return answer in {"y", "yes"}
 
 
 def prompt_input(
@@ -384,3 +396,69 @@ def ensure_processed_artifact(
 
     selection_path = resolve_existing_path(selection)
     return _handle_candidate(selection_path)
+
+
+def load_image(path: Path) -> np.ndarray:
+    """Load image as uint8 grayscale.
+
+    Tries `tifffile` for TIFFs, otherwise uses OpenCV.
+    """
+    ext = path.suffix.lower()
+    img: np.ndarray
+    if ext in {".tif", ".tiff"}:
+        img = tifffile.imread(str(path))
+        if img.ndim == 3:
+            img = img[..., 0]
+    else:
+        loaded = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
+        if loaded is None:
+            raise FileNotFoundError(f"Failed to read image: {path}")
+        img = loaded
+
+    if img.dtype != np.uint8:
+        # Normalize to 0-255
+        img = img.astype(np.float32)
+        maxv = img.max() if img.size else 1.0
+        if maxv == 0:
+            maxv = 1.0
+        img = (img / maxv * 255.0).astype(np.uint8)
+    return img
+
+
+def load_images(
+    image_paths: Sequence[str | Path],
+    *,
+    n_jobs: int | None = None,
+    show_progress: bool = True,
+) -> np.ndarray:
+    """Load a list of image files into a 3D array.
+
+    Parameters
+    ----------
+    image_paths : Sequence[str | Path]
+        Iterable of image paths (e.g. from ``init_config._get_image_list``).
+    n_jobs : int | None
+        Max workers for ``ThreadPoolExecutor``. Defaults to ``os.cpu_count()``.
+    show_progress : bool
+        If True, wrap the loader in a tqdm progress bar.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (n_images, y, x) with dtype ``uint8``.
+    """
+
+    if not image_paths:
+        raise ValueError("image_paths must not be empty")
+
+    resolved_paths = [Path(p).expanduser() for p in image_paths]
+    max_workers = n_jobs or (os.cpu_count() or 4)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        iterator = executor.map(load_image, resolved_paths)
+        if show_progress:
+            iterator = tqdm(iterator, total=len(resolved_paths),
+                            desc="Loading images", leave=False)
+        images = list(iterator)
+
+    return np.stack(images, axis=0)

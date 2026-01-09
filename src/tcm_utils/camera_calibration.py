@@ -16,6 +16,7 @@ from tcm_utils.io_utils import (
     copy_file_to_raw_subfolder,
     create_timestamped_filename,
     ensure_processed_artifact,
+    prompt_input,
 )
 
 
@@ -235,7 +236,7 @@ def infer_grid_size(n_points: int) -> Tuple[int, int]:
 
 def run_calibration(
     input_path: Path | None = None,
-    distance_mm: float = 0.5,
+    distance_mm: float | None = None,
     invert: bool = True,
     adaptive: bool = False,
     min_area: float = 3.0,
@@ -323,6 +324,20 @@ def run_calibration(
 
     spacing_px = float(dx) if dx > 0 else float(
         np.linalg.norm(np.ptp(centers, axis=0))) / max(cols - 1, 1)
+
+    if distance_mm is None:
+        spacing_input = prompt_input(
+            "Enter the spacing between dots in millimeters (press Enter to cancel): ",
+            value_type="float",
+            allow_empty=True,
+            min_value=0.0,
+            exclusive_min=True,
+        )
+        if spacing_input is None:
+            print("Calibration cancelled: no spacing provided.")
+            return 1
+        distance_mm = float(spacing_input)
+
     mm_per_px = float(distance_mm) / spacing_px
 
     # Build visualization
@@ -431,7 +446,7 @@ def run_calibration(
 
 def ensure_calibration(
     input_path: Path | None = None,
-    distance_mm: float = 0.5,
+    distance_mm: float | None = None,
     invert: bool = True,
     adaptive: bool = False,
     min_area: float = 3.0,
@@ -447,6 +462,8 @@ def ensure_calibration(
     3) If ``input_path`` is a ``.tif/.tiff`` file, run calibration on it (prompt for output dir when not provided) and return the created metadata JSON.
     4) If ``input_path`` is a folder containing a ``.tif/.tiff`` file, run calibration on that file and return the resulting metadata JSON.
     5) Otherwise, ask the user to select a metadata JSON or calibration image file.
+
+    If ``distance_mm`` is omitted, the user will be prompted for the dot spacing.
     """
 
     repo_root = find_repo_root(Path(__file__))

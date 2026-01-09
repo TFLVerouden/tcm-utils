@@ -3,10 +3,90 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Iterable, Callable, Sequence
+from typing import Any, Iterable, Callable, Sequence, Literal
 import numpy as np
 
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
+
+
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["string", "float", "int"] = "string",
+    allow_empty: bool = False,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> str | float | int | None:
+    """Prompt the user for input with basic type and range validation.
+
+    Parameters
+    ----------
+    prompt : str
+        Prompt shown to the user.
+    value_type : {"string", "float", "int"}
+        Expected type. Numbers are parsed to the chosen type.
+    allow_empty : bool
+        If True, empty input returns ``None`` instead of re-prompting.
+    min_value : float | None
+        Minimum allowed value (inclusive by default).
+    max_value : float | None
+        Maximum allowed value (inclusive by default).
+    exclusive_min : bool
+        If True, ``min_value`` is treated as an exclusive bound.
+    exclusive_max : bool
+        If True, ``max_value`` is treated as an exclusive bound.
+
+    Returns
+    -------
+    str | float | int | None
+        Parsed value, or ``None`` when empty input is allowed and received.
+    """
+
+    expected = value_type.lower()
+    if expected not in {"string", "float", "int"}:
+        raise ValueError("value_type must be 'string', 'float', or 'int'")
+
+    while True:
+        raw = input(prompt).strip()
+
+        if raw == "":
+            if allow_empty:
+                return None
+            print("Input cannot be empty.")
+            continue
+
+        if expected == "string":
+            return raw
+
+        try:
+            value_num: float | int
+            if expected == "int":
+                value_num = int(raw)
+            else:
+                value_num = float(raw)
+        except ValueError:
+            print("Invalid number. Please enter a numeric value.")
+            continue
+
+        if min_value is not None:
+            if exclusive_min and value_num <= min_value:
+                print(f"Please enter a value greater than {min_value}.")
+                continue
+            if not exclusive_min and value_num < min_value:
+                print(f"Please enter a value of at least {min_value}.")
+                continue
+
+        if max_value is not None:
+            if exclusive_max and value_num >= max_value:
+                print(f"Please enter a value less than {max_value}.")
+                continue
+            if not exclusive_max and value_num > max_value:
+                print(f"Please enter a value of at most {max_value}.")
+                continue
+
+        return value_num
 
 
 def path_relative_to(path: Path, root: Path) -> str:

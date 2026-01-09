@@ -325,7 +325,7 @@ def run_calibration(
     spacing_px = float(dx) if dx > 0 else float(
         np.linalg.norm(np.ptp(centers, axis=0))) / max(cols - 1, 1)
 
-    if distance_mm is None:
+    if distance_mm is None or distance_mm == "" or (isinstance(distance_mm, (int, float)) and distance_mm <= 0):
         spacing_input = prompt_input(
             "Enter the spacing between dots in millimeters (press Enter to cancel): ",
             value_type="float",

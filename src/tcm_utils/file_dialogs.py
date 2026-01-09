@@ -9,13 +9,30 @@ CONFIG_FILENAME = "file_dialog.ini"
 CONFIG_SECTION = "paths"
 
 
-def find_repo_root(start: Path | None = None) -> Path:
-    """Return the repository root by walking upward until a .git folder is found."""
+def find_repo_root(start: Path | None = None, prefer_cwd: bool = True) -> Path:
+    """Return the repository root by walking upward until a .git folder is found.
+
+    If ``prefer_cwd`` is True and the current working directory is inside a repo,
+    that repo is returned even when ``start`` points elsewhere (e.g. inside an
+    installed dependency). This keeps per-repo config files with the caller's
+    project instead of the utility library.
+    """
+
+    def _git_root(path: Path) -> Path | None:
+        for candidate in [path] + list(path.parents):
+            if (candidate / ".git").exists():
+                return candidate
+        return None
+
     path = Path(start or Path.cwd()).resolve()
-    for candidate in [path] + list(path.parents):
-        if (candidate / ".git").exists():
-            return candidate
-    return path.anchor and Path(path.anchor) or path
+    start_root = _git_root(path)
+    cwd_root = _git_root(Path.cwd().resolve()) if prefer_cwd else None
+
+    if prefer_cwd and cwd_root:
+        if start_root is None or start_root != cwd_root:
+            return cwd_root
+
+    return start_root or cwd_root or (path.anchor and Path(path.anchor)) or path
 
 
 def _config_path(repo_root: Path) -> Path:
@@ -57,7 +74,7 @@ def ask_open_file(
     start: Path | None = None,
 ) -> Path | None:
     """Open a file dialog, remembering the last chosen directory per key."""
-    repo_root = find_repo_root(start)
+    repo_root = find_repo_root(start, prefer_cwd=True)
     config_path = _config_path(repo_root)
     config = _load_config(config_path)
 
@@ -75,21 +92,19 @@ def ask_open_file(
     except Exception:
         pass  # Fallback if tk::PlaceWindow not available
 
-    # TODO: Test this on Windows
+    # Print
     print(title)
-    selected = filedialog.askopenfilename(
-        title=title,
-        initialdir=str(initial_dir),
-        filetypes=filetypes,
-    )
+    path = filedialog.askopenfilename(title=title, initialdir=str(initial_dir),
+                                      filetypes=(("All files", "*.*"),))
     root.destroy()
-
-    if not selected:
+    if not path:
         return None
 
-    chosen_path = Path(selected).expanduser().resolve()
+    chosen_path = Path(path).expanduser().resolve()
     _remember_last_dir(config_path, config, key, chosen_path.parent)
     return chosen_path
+
+    # TODO: Test this on Windows
 
 
 def ask_directory(
@@ -99,7 +114,7 @@ def ask_directory(
     start: Path | None = None,
 ) -> Path | None:
     """Open a directory picker, remembering the last chosen location per key."""
-    repo_root = find_repo_root(start)
+    repo_root = find_repo_root(start, prefer_cwd=True)
     config_path = _config_path(repo_root)
     config = _load_config(config_path)
 
@@ -125,5 +140,6 @@ def ask_directory(
         return None
 
     chosen_path = Path(selected).expanduser().resolve()
-    _remember_last_dir(config_path, config, key, chosen_path)
+    print(f"Selected directory: {chosen_path}")
+    _remember_last_dir(config_path, config, key, chosen_path.parent)
     return chosen_path

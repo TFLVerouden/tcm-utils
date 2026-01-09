@@ -354,7 +354,7 @@ def ensure_cihx_processed(
     """
 
     repo_root = find_repo_root(Path(__file__))
-    default_output = repo_root / "docs" / "cihx_analysis"
+    default_output = repo_root
 
     def _runner(cihx_path: Path, dest: Path) -> None:
         extract_cihx_metadata(
@@ -370,7 +370,7 @@ def ensure_cihx_processed(
         input_path=input_path,
         output_dir=output_dir,
         metadata_pattern="*_metadata.json",
-        source_patterns=("*.cihx", "*.cih"),
+        source_patterns="*.cihx",
         output_dir_key="cihx_output",
         output_dir_title="Select output directory for CIHX metadata",
         default_output_dir=default_output,
@@ -378,9 +378,8 @@ def ensure_cihx_processed(
         prompt_key="cihx_metadata_or_file",
         prompt_title="Select CIHX metadata JSON or CIHX file",
         prompt_filetypes=[
-            ("Metadata or CIHX", "*_metadata.json *.cihx *.cih"),
-            ("All files", "*.*"),
-        ],
+            ("Metadata or CIHX", ("*_metadata.json", "*.cihx")),
+            ("All files", "*.*")],
         start_path=Path(__file__),
     )
 

@@ -43,7 +43,7 @@ def recursive_search(d, target):
 
 def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metadata",
                           save=True, verbose=True, timestamp_source="file",
-                          move_raw=True):
+                          copy_raw=True):
     """
     Extracts the embedded XML metadata from a .cihx file, prints key info, and saves as a JSON file.
 
@@ -64,8 +64,8 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
         Whether to print important extracted metadata to console
     timestamp_source : str
         Use 'file' for file creation/mod time or 'now' for current time
-    move_raw : bool
-        Whether to move the original .cihx file to a raw_data subfolder
+    copy_raw : bool
+        Whether to copy the original .cihx file to a raw_data subfolder
 
     Returns
     -------
@@ -88,13 +88,13 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
 
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Get base filename and timestamp
+    # Get base filename and save-time timestamp
     base_filename = filepath.stem
     if timestamp_source == "file":
-        timestamp = timestamp_from_file(filepath, prefer_creation=True)
+        timestamp_save = timestamp_from_file(filepath, prefer_creation=True)
         timestamp_source_description = "file_creation_time"
     else:
-        timestamp = timestamp_str()
+        timestamp_save = timestamp_str()
         timestamp_source_description = "current_time"
 
     with open(filepath, "rb") as f:
@@ -110,7 +110,7 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
 
     # Convert XML into nested dictionary
     def xml_to_dict(element):
-        d = {element.tag: {} if element.attrib else None}
+        d = {element.tag: {}}
         children = list(element)
         if children:
             dd = {}
@@ -126,8 +126,7 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
         if element.text and element.text.strip():
             text = element.text.strip()
             if children or element.attrib:
-                if text:
-                    d[element.tag]["text"] = text
+                d[element.tag]["text"] = text
             else:
                 d[element.tag] = text
         return d
@@ -188,6 +187,36 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
     # Get all keys and values
     all_metadata_keys = extract_all_keys(metadata_dict)
 
+    # Derive camera timestamp from camera metadata (date + time)
+    camera_date = recursive_search(metadata_dict, "date")
+    camera_time = recursive_search(metadata_dict, "time")
+
+    def _camera_timestamp(date_val, time_val) -> str | None:
+        if not date_val or not time_val:
+            return None
+        date_parts = re.findall(r"\d+", str(date_val))
+        time_parts = re.findall(r"\d+", str(time_val))
+        if len(date_parts) < 3 or len(time_parts) < 3:
+            return None
+        try:
+            year = int(date_parts[0]) % 100
+            month = int(date_parts[1])
+            day = int(date_parts[2])
+            hour = int(time_parts[0])
+            minute = int(time_parts[1])
+            second = int(time_parts[2])
+        except ValueError:
+            return None
+        return f"{year:02d}{month:02d}{day:02d}_{hour:02d}{minute:02d}{second:02d}"
+
+    camera_ts = _camera_timestamp(camera_date, camera_time)
+    if camera_ts:
+        timestamp = camera_ts
+        timestamp_source_description = "camera_metadata"
+    else:
+        print("Warning: could not parse camera date/time; using save timestamp instead.")
+        timestamp = timestamp_save
+
     # Save comprehensive metadata as JSON file
     if save:
         # Get repo root for relative paths
@@ -198,7 +227,7 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
 
         # Copy raw file if requested
         moved_raw_path = None
-        if move_raw:
+        if copy_raw:
             moved_raw_path = copy_file_to_raw_subfolder(
                 filepath, output_folder)
             print(f"\nCopied original file to {moved_raw_path}")
@@ -212,6 +241,7 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
         # Build metadata dictionary
         metadata_output = {
             "timestamp": timestamp,
+            "timestamp_save": timestamp_save,
             "timestamp_source": timestamp_source_description,
             "analysis_run_time": timestamp_str(),
             "input_file_original": path_relative_to(filepath, repo_root),
@@ -334,7 +364,7 @@ if __name__ == "__main__":
                 save=True,
                 verbose=True,
                 timestamp_source="file",
-                move_raw=True,
+                copy_raw=True,
             )
         else:
             print("No file selected. Exiting.")

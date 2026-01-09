@@ -66,7 +66,7 @@ metadata = extract_cihx_metadata(
     save=True,
     verbose=True,
     timestamp_source="file",
-    move_raw=True,
+    copy_raw=True,
 )
 
 print("\n" + "-" * 60)

@@ -1,8 +1,9 @@
 {
-  "timestamp": "20250927_132350",
-  "timestamp_source": "file_creation_time",
-  "analysis_run_time": "20260107_170556",
-  "input_file_original": "docs/cihx_analysis/raw_data/example.cihx",
+  "timestamp": "250808_144911",
+  "timestamp_save": "20250927_132350",
+  "timestamp_source": "camera_metadata",
+  "analysis_run_time": "20260109_110911",
+  "input_file_original": "examples/cihx_demo_outputs/raw_data/example.cihx",
   "camera_metadata": {
     "date": "2025/8/8",
     "time": "14:49:11",
@@ -361,7 +362,6 @@
     "cih.plugin.lut.USER.isNegativeB": "false",
     "cih.plugin.lut.USER.isFreeCurve": "false",
     "cih.plugin.colorcorrection.saturation": "1",
-    "cih.plugin.calibration.distanceUnit": null,
     "cih.plugin.calibration.scaleMode": "0",
     "cih.plugin.calibration.sizeOfPixel": "1.0",
     "cih.plugin.calibration.magnification": "1.0",
@@ -807,7 +807,7 @@
           "saturation": "1"
         },
         "calibration": {
-          "distanceUnit": null,
+          "distanceUnit": {},
           "scaleMode": "0",
           "sizeOfPixel": "1.0",
           "magnification": "1.0",
@@ -870,5 +870,5 @@
       }
     }
   },
-  "raw_data_path": "examples/read_cihx_outputs/raw_data/example.cihx"
+  "raw_data_path": "examples/cihx_demo_outputs/raw_data/example.cihx"
 }

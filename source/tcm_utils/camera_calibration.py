@@ -399,6 +399,7 @@ def run_calibration(
             "roi": {"x": x, "y": y, "width": w, "height": h},
             "spacing_px": float(spacing_px),
             "scale_mm_per_px": float(mm_per_px),
+            "scale_m_per_px": float(mm_per_px) / 1000.0,
             "distance_mm_input": float(distance_mm),
             "image_size_px": {"width": int(img_w), "height": int(img_h)},
             "image_size_m": {"width": float(img_w) * mm_per_px / 1000.0,

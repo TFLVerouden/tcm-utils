@@ -1,7 +1,7 @@
 {
   "timestamp": "260108_141319",
   "timestamp_source": "file_creation_time",
-  "analysis_run_time": "260110_000017",
+  "analysis_run_time": "260110_000701",
   "input_file_original": "examples/calibration_demo/raw_data/calibration_image.tif",
   "raw_data_path": "examples/calibration_demo/raw_data/calibration_image.tif",
   "output_files": {
@@ -12,21 +12,22 @@
     "rows": 25,
     "cols": 26,
     "roi": {
-      "x": 209,
-      "y": 185,
-      "width": 862,
-      "height": 819
+      "x": 208,
+      "y": 183,
+      "width": 863,
+      "height": 825
     },
-    "spacing_px": 32.68106995884773,
-    "scale_mm_per_px": 0.030598753384121394,
+    "spacing_px": 32.68106995884784,
+    "scale_mm_per_px": 0.03059875338412129,
+    "scale_m_per_px": 3.059875338412129e-05,
     "distance_mm_input": 1.0,
     "image_size_px": {
       "width": 1280,
       "height": 1024
     },
     "image_size_m": {
-      "width": 0.039166404331675383,
-      "height": 0.031333123465340305
+      "width": 0.03916640433167525,
+      "height": 0.0313331234653402
     }
   }
 }

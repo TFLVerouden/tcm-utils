@@ -17,3 +17,6 @@ dependencies = [
     "opencv-python",
     "scikit-learn",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "source"}

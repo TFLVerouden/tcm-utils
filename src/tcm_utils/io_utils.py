@@ -142,7 +142,7 @@ def load_json_key(path: Path, key: str, default: Any | None = None) -> Any | Non
     return data.get(key, default)
 
 
-def ensure_path_value(
+def ensure_path(
     value: str | Path | None,
     key: str,
     title: str | None = None,
@@ -236,7 +236,7 @@ def ensure_processed_artifact(
         return find_latest_in_directory(folder, source_patterns)
 
     def _resolve_output_folder(default_dir: Path) -> Path | None:
-        chosen = ensure_path_value(
+        chosen = ensure_path(
             value=output_dir,
             key=output_dir_key,
             title=output_dir_title,

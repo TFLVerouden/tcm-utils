@@ -459,6 +459,7 @@ def load_images(
         if show_progress:
             iterator = tqdm(iterator, total=len(resolved_paths),
                             desc="Loading images", leave=False)
+            # TODO: I don't think tqdm is working here
         images = list(iterator)
 
     return np.stack(images, axis=0)

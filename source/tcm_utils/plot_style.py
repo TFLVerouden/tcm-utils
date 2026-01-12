@@ -12,6 +12,22 @@ from typing import Literal
 import numpy as np
 
 
+def data_to_axes_frac(ax, xy: tuple[float, float]) -> tuple[float, float]:
+    """Convert (x, y) from data coordinates to axes-fraction coordinates."""
+
+    x_disp, y_disp = ax.transData.transform(xy)
+    x_ax, y_ax = ax.transAxes.inverted().transform((x_disp, y_disp))
+    return float(x_ax), float(y_ax)
+
+
+def axes_frac_to_data(ax, xy: tuple[float, float]) -> tuple[float, float]:
+    """Convert (x, y) from axes-fraction coordinates to data coordinates."""
+
+    x_disp, y_disp = ax.transAxes.transform(xy)
+    x_data, y_data = ax.transData.inverted().transform((x_disp, y_disp))
+    return float(x_data), float(y_data)
+
+
 def use_tcm_poster_style() -> None:
     """Activate the bundled Matplotlib style: "tcm-poster"."""
 
@@ -61,6 +77,7 @@ def add_label(
     text: str,
     *,
     xy: tuple[float, float] = (0.02, 0.95),
+    coord_system: Literal["axes", "data"] = "axes",
     ha: str = "left",
     va: str = "top",
     italic: bool = True,
@@ -81,11 +98,20 @@ def add_label(
     family = sans_list[0] if len(sans_list) > 0 else "sans-serif"
     fp = FontProperties(family=family, style="italic" if italic else "normal")
 
+    if coord_system == "axes":
+        transform = ax.transAxes
+        x, y = xy
+    elif coord_system == "data":
+        transform = ax.transData
+        x, y = xy
+    else:
+        raise ValueError("coord_system must be 'axes' or 'data'")
+
     ax.text(
-        xy[0],
-        xy[1],
+        x,
+        y,
         text,
-        transform=ax.transAxes,
+        transform=transform,
         ha=ha,
         va=va,
         fontproperties=fp,
@@ -198,6 +224,18 @@ def append_unit_to_last_ticklabel(
     vmin, vmax = map(float, ax.get_ylim())
     _apply(ticks, vmin, vmax, ax.yaxis.set_major_locator,
            ax.yaxis.set_major_formatter)
+
+
+def set_ticks_every(ax, *, axis: Literal["x", "y"] = "x", step: float = 1.0) -> None:
+    """Set ticks at every 'step' units on the specified axis."""
+
+    from matplotlib.ticker import MultipleLocator
+
+    locator = MultipleLocator(base=step)
+    if axis == "x":
+        ax.xaxis.set_major_locator(locator)
+    else:
+        ax.yaxis.set_major_locator(locator)
 
 
 def raise_axis_frame(ax, *, zorder: float = 20) -> None:

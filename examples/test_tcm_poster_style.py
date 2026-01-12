@@ -24,6 +24,7 @@ from tcm_utils.plot_style import (
     set_log_axes,
     set_grid,
     use_tcm_poster_style,
+    set_ticks_every
 )
 
 use_tcm_poster_style()
@@ -39,13 +40,15 @@ out_dir.mkdir(parents=True, exist_ok=True)
 
 # ========== Demo 1: cough model (linear axes) ==========
 fig1, ax1 = plt.subplots(1, 1, figsize=(4.0, 3.0), constrained_layout=True)
-set_grid(ax1, mode="horizontal", on=True)
+set_grid(ax1, mode="horizontal", on=False)
 ax1.plot(t_s, q_lps, color=colors[0])
 ax1.set_ylabel("Flow rate (L/s)")
 ax1.set_xlim(0, 0.5)
 ax1.set_ylim(0, max(1.0, float(np.nanmax(q_lps)) * 1.05))
-add_label(ax1, "Gupta 2009\nMale, 70 kg, 1.93 m", xy=(0.04, 0.95))
+add_label(ax1, "real cough", xy=(0.27, 3), coord_system="data")
+set_ticks_every(ax1, axis="y", step=1)
 append_unit_to_last_ticklabel(ax1, axis="x", unit="s", fmt="{x:.1f}")
+
 raise_axis_frame(ax1)
 
 out_path1 = out_dir / "tcm_poster_demo_cough.pdf"
@@ -81,9 +84,9 @@ plot_binned_area(
     zorder_outline=7,
 )
 
-ax2.set_xlabel("Diameter (µm)")
 ax2.set_ylabel("Normalized volume")
-add_label(ax2, "Binned area", xy=(0.04, 0.95))
+append_unit_to_last_ticklabel(ax2, axis="x", unit="µm", fmt="{x:.0f}")
+add_label(ax2, "example", xy=(0.52, 0.5), ha="right", va="bottom")
 raise_axis_frame(ax2)
 
 out_path2 = out_dir / "tcm_poster_demo_binned_area.pdf"

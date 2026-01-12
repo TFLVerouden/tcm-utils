@@ -399,30 +399,13 @@ def ensure_processed_artifact(
 
 
 def load_image(path: Path) -> np.ndarray:
-    """Load image as uint8 grayscale.
+    """Read a single image file using OpenCV."""
 
-    Tries `tifffile` for TIFFs, otherwise uses OpenCV.
-    """
-    ext = path.suffix.lower()
-    img: np.ndarray
-    if ext in {".tif", ".tiff"}:
-        img = tifffile.imread(str(path))
-        if img.ndim == 3:
-            img = img[..., 0]
-    else:
-        loaded = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
-        if loaded is None:
-            raise FileNotFoundError(f"Failed to read image: {path}")
-        img = loaded
+    image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
 
-    if img.dtype != np.uint8:
-        # Normalize to 0-255
-        img = img.astype(np.float32)
-        maxv = img.max() if img.size else 1.0
-        if maxv == 0:
-            maxv = 1.0
-        img = (img / maxv * 255.0).astype(np.uint8)
-    return img
+    if image is None:
+        raise FileNotFoundError(f"Failed to read image: {path}")
+    return image
 
 
 def load_images(

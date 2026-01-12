@@ -6,12 +6,14 @@ from . import camera_calibration
 from . import cough_model
 from . import cvd_check
 from . import io_utils
+from . import plot_style
 from . import time_utils
 
 __all__ = [
-	"camera_calibration",
-	"cough_model",
-	"cvd_check",
-	"io_utils",
-	"time_utils",
+    "camera_calibration",
+    "cough_model",
+    "cvd_check",
+    "io_utils",
+    "plot_style",
+    "time_utils",
 ]

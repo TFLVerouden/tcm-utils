@@ -1,0 +1,66 @@
+# tcm_utils - tcm-poster style
+# Poster look: thick-ish black spines, outward ticks, large fonts, white axes.
+# Figure background is transparent for easy placement on colored posters.
+
+# --- Fonts ---
+font.family: sans-serif
+font.sans-serif: PT Sans
+font.size: 16
+axes.titlesize: 18
+axes.labelsize: 18
+xtick.labelsize: 16
+ytick.labelsize: 16
+
+# Embed TrueType fonts in PDF/SVG where possible
+pdf.fonttype: 42
+ps.fonttype: 42
+svg.fonttype: none
+
+# --- Figure / Axes backgrounds ---
+figure.facecolor: none
+figure.edgecolor: none
+axes.facecolor: white
+savefig.transparent: True
+savefig.facecolor: none
+savefig.edgecolor: none
+
+# --- Spines / axes ---
+axes.edgecolor: black
+axes.linewidth: 2.0
+axes.labelcolor: black
+axes.axisbelow: True
+
+# --- Ticks ---
+xtick.color: black
+ytick.color: black
+xtick.direction: out
+ytick.direction: out
+
+# show ticks only bottom/left
+xtick.top: False
+ytick.right: False
+
+# but keep spines visible by default
+
+xtick.major.width: 1.6
+ytick.major.width: 1.6
+xtick.minor.width: 1.2
+ytick.minor.width: 1.2
+xtick.major.size: 7
+ytick.major.size: 7
+xtick.minor.size: 3.5
+ytick.minor.size: 3.5
+
+# --- Lines (data) ---
+lines.linewidth: 4.0
+lines.solid_capstyle: round
+
+# --- Grid (off by default; enable per-axis with ax.grid(..., axis='y')) ---
+axes.grid: False
+grid.color: 0.75
+grid.linewidth: 2.2
+grid.linestyle: --
+
+# --- Legend (avoid; prefer in-axes label text) ---
+legend.frameon: False
+legend.fontsize: 14

@@ -6,6 +6,7 @@ fonts, white axes background, and transparent figure background.
 """
 
 from __future__ import annotations
+from typing import Any
 
 from typing import Literal
 
@@ -236,6 +237,53 @@ def set_ticks_every(ax, *, axis: Literal["x", "y"] = "x", step: float = 1.0) -> 
         ax.xaxis.set_major_locator(locator)
     else:
         ax.yaxis.set_major_locator(locator)
+
+
+def add_broken_xaxis_marks(
+    fig: Any,
+    ax_left: Any,
+    ax_right: Any,
+    *,
+    size: float = 0.008,
+    linewidth: float | None = None,
+    color: str = "k",
+) -> None:
+    """Draw diagonal break marks between two horizontally adjacent axes.
+
+    Call this after final layout (tight_layout/subplots_adjust), otherwise the
+    axes positions move and the marks end up offset.
+    """
+
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    if linewidth is None:
+        linewidth = float(plt.rcParams.get("axes.linewidth", 1.0))
+
+    b0 = ax_left.get_position()
+    b1 = ax_right.get_position()
+
+    x_left_edge = float(b0.x1)
+    x_right_edge = float(b1.x0)
+    y_lo = float(b0.y0)
+    y_hi = float(b0.y1)
+
+    def _diag(x: float, y: float) -> tuple[list[float], list[float]]:
+        return [x - size, x + size], [y - size, y + size]
+
+    for x in (x_left_edge, x_right_edge):
+        for y in (y_lo, y_hi):
+            xs, ys = _diag(x, y)
+            fig.add_artist(
+                Line2D(
+                    xs,
+                    ys,
+                    transform=fig.transFigure,
+                    color=color,
+                    linewidth=linewidth,
+                    clip_on=False,
+                )
+            )
 
 
 def raise_axis_frame(ax, *, zorder: float = 20) -> None:

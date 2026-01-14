@@ -66,6 +66,32 @@ def use_tcm_poster_style() -> None:
         # Fallback: if package resources aren't available for some reason.
         plt.style.use("default")
 
+    # Keep stroke weights consistent: frame, ticks, and gridlines.
+    # (Makes log/log or broken-axis plots look much cleaner.)
+    lw = float(plt.rcParams.get("axes.linewidth", 1.0))
+    plt.rcParams["grid.linewidth"] = lw
+    plt.rcParams["xtick.major.width"] = lw
+    plt.rcParams["xtick.minor.width"] = lw
+    plt.rcParams["ytick.major.width"] = lw
+    plt.rcParams["ytick.minor.width"] = lw
+
+    # Always keep the axes (plot area) background white.
+    # The outer figure background can remain transparent if desired.
+    plt.rcParams["axes.facecolor"] = "white"
+
+    # Slightly larger legends by default
+    tick_fs = float(plt.rcParams.get("xtick.labelsize", 3))
+    plt.rcParams["legend.fontsize"] = tick_fs
+    plt.rcParams["legend.title_fontsize"] = tick_fs
+
+    # More compact legend layout by default
+    plt.rcParams["legend.borderaxespad"] = 0.2
+    plt.rcParams["legend.borderpad"] = 0.2
+    plt.rcParams["legend.labelspacing"] = 0.25
+    plt.rcParams["legend.handlelength"] = 1.2
+    plt.rcParams["legend.handletextpad"] = 0.4
+    plt.rcParams["legend.columnspacing"] = 0.6
+
 
 def use_flow_rate_model_style() -> None:
     """Backward-compatible alias for older scripts."""

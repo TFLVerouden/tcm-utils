@@ -270,14 +270,24 @@ def add_broken_xaxis_marks(
     ax_left: Any,
     ax_right: Any,
     *,
-    size: float = 0.008,
+    length_points: float = 12.0,
     linewidth: float | None = None,
     color: str = "k",
+    inset_points: float = 0.0,
+    angle_deg: float = 45.0,
 ) -> None:
     """Draw diagonal break marks between two horizontally adjacent axes.
 
     Call this after final layout (tight_layout/subplots_adjust), otherwise the
     axes positions move and the marks end up offset.
+
+    Args:
+        length_points:
+            Full visual length of the diagonal mark in points.
+        inset_points:
+            Shift marks inward by this many points so they overlap spines.
+        angle_deg:
+            Mark angle in degrees in *display space* (0 = horizontal, 90 = vertical).
     """
 
     import matplotlib.pyplot as plt
@@ -289,13 +299,33 @@ def add_broken_xaxis_marks(
     b0 = ax_left.get_position()
     b1 = ax_right.get_position()
 
-    x_left_edge = float(b0.x1)
-    x_right_edge = float(b1.x0)
+    import math
+
+    fig_w_in = float(fig.get_figwidth())
+    fig_h_in = float(fig.get_figheight())
+
+    # Shift marks slightly *into* the axes so they cover the spine edge cleanly.
+    # inset_points is in points (like Line2D linewidth).
+    dx = float(inset_points) / (fig_w_in * 72.0) if fig_w_in > 0 else 0.0
+
+    x_left_edge = float(b0.x1) + dx
+    x_right_edge = float(b1.x0) - dx
     y_lo = float(b0.y0)
     y_hi = float(b0.y1)
 
+    # Compute the diagonal deltas so the mark has:
+    # - the requested angle in display space
+    # - the same visual length for any angle
+    fig_w_pt = fig_w_in * 72.0
+    fig_h_pt = fig_h_in * 72.0
+    half_len_pt = 0.5 * float(length_points)
+
+    theta = math.radians(float(angle_deg))
+    dx_mark = (half_len_pt * math.cos(theta) / fig_w_pt) if fig_w_pt > 0 else 0.0
+    dy_mark = (half_len_pt * math.sin(theta) / fig_h_pt) if fig_h_pt > 0 else 0.0
+
     def _diag(x: float, y: float) -> tuple[list[float], list[float]]:
-        return [x - size, x + size], [y - size, y + size]
+        return [x - dx_mark, x + dx_mark], [y - dy_mark, y + dy_mark]
 
     for x in (x_left_edge, x_right_edge):
         for y in (y_lo, y_hi):
@@ -308,6 +338,7 @@ def add_broken_xaxis_marks(
                     color=color,
                     linewidth=linewidth,
                     clip_on=False,
+                    solid_capstyle="projecting",
                 )
             )
 

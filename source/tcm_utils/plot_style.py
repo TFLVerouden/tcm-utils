@@ -79,6 +79,12 @@ def use_tcm_poster_style() -> None:
     # The outer figure background can remain transparent if desired.
     plt.rcParams["axes.facecolor"] = "white"
 
+    # IMPORTANT: don't use Matplotlib's global savefig transparency.
+    # If savefig.transparent=True, Matplotlib makes BOTH the figure and axes
+    # patches transparent during export, which breaks the intended "white axes
+    # on transparent figure" look.
+    plt.rcParams["savefig.transparent"] = False
+
     # Slightly larger legends by default
     tick_fs = float(plt.rcParams.get("xtick.labelsize", 3))
     plt.rcParams["legend.fontsize"] = tick_fs
@@ -321,8 +327,10 @@ def add_broken_xaxis_marks(
     half_len_pt = 0.5 * float(length_points)
 
     theta = math.radians(float(angle_deg))
-    dx_mark = (half_len_pt * math.cos(theta) / fig_w_pt) if fig_w_pt > 0 else 0.0
-    dy_mark = (half_len_pt * math.sin(theta) / fig_h_pt) if fig_h_pt > 0 else 0.0
+    dx_mark = (half_len_pt * math.cos(theta) /
+               fig_w_pt) if fig_w_pt > 0 else 0.0
+    dy_mark = (half_len_pt * math.sin(theta) /
+               fig_h_pt) if fig_h_pt > 0 else 0.0
 
     def _diag(x: float, y: float) -> tuple[list[float], list[float]]:
         return [x - dx_mark, x + dx_mark], [y - dy_mark, y + dy_mark]

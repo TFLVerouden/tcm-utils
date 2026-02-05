@@ -41,6 +41,18 @@ def _config_path(repo_root: Path) -> Path:
     return config_dir / CONFIG_FILENAME
 
 
+def repo_config_path(
+    filename: str,
+    start: Path | None = None,
+    prefer_cwd: bool = True,
+) -> Path:
+    """Return a file path inside the repo's .config directory."""
+    repo_root = find_repo_root(start, prefer_cwd=prefer_cwd)
+    config_dir = repo_root / CONFIG_DIRNAME
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / filename
+
+
 def _load_config(config_path: Path) -> configparser.ConfigParser:
     config = configparser.ConfigParser()
     if config_path.exists():

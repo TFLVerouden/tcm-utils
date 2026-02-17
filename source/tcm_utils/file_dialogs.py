@@ -28,7 +28,7 @@ def find_repo_root(start: Path | None = None, prefer_cwd: bool = True) -> Path:
     start_root = _git_root(path)
     cwd_root = _git_root(Path.cwd().resolve()) if prefer_cwd else None
 
-    if prefer_cwd and cwd_root:
+    if prefer_cwd and cwd_root is not None:
         if start_root is None or start_root != cwd_root:
             return cwd_root
 
@@ -41,7 +41,7 @@ def _config_path(repo_root: Path) -> Path:
     return config_dir / CONFIG_FILENAME
 
 
-def repo_config_path(
+def get_config_path(
     filename: str,
     start: Path | None = None,
     prefer_cwd: bool = True,

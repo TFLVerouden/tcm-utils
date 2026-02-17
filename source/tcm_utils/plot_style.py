@@ -115,6 +115,7 @@ def add_label(
     va: str = "top",
     italic: bool = True,
     fontsize: float | None = None,
+    color: str = "black"
 ) -> None:
     """Add a text label inside the axes (legend replacement)."""
 
@@ -149,6 +150,7 @@ def add_label(
         va=va,
         fontproperties=fp,
         fontsize=fontsize,
+        color=color
     )
 
 

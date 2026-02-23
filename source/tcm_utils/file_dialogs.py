@@ -21,8 +21,6 @@ import configparser
 from tkinter import Tk, filedialog
 
 CONFIG_DIRNAME = ".config"
-CONFIG_FILENAME = "file_dialog.ini"
-CONFIG_SECTION = "paths"
 
 
 def find_repo_root(start: Path | None = None, prefer_cwd: bool = True) -> Path:
@@ -70,18 +68,8 @@ def find_repo_root(start: Path | None = None, prefer_cwd: bool = True) -> Path:
     return start_root or cwd_root or (path.anchor and Path(path.anchor)) or path
 
 
-def _config_path(repo_root: Path) -> Path:
-    """Return the default INI config path for a given repository root.
-
-    Side effect: ensures the ``.config`` directory exists.
-    """
-    config_dir = repo_root / CONFIG_DIRNAME
-    config_dir.mkdir(parents=True, exist_ok=True)
-    return config_dir / CONFIG_FILENAME
-
-
 def get_config_path(
-    filename: str,
+    filename: str = "file_dialog.ini",
     start: Path | None = None,
     prefer_cwd: bool = True,
 ) -> Path:
@@ -98,7 +86,7 @@ def get_config_path(
 
 def _load_config(
     config_path: Path,
-    section: str = CONFIG_SECTION,
+    section: str = "paths",
 ) -> configparser.ConfigParser:
     """Load the INI config file and ensure ``section`` exists."""
     config = configparser.ConfigParser()
@@ -115,18 +103,29 @@ def _save_config(config_path: Path, config: configparser.ConfigParser) -> None:
         config.write(fh)
 
 
-def _get_last_dir(config: configparser.ConfigParser, key: str, default_dir: Path) -> Path:
+def _get_last_dir(
+    config: configparser.ConfigParser,
+    key: str,
+    default_dir: Path,
+    section: str = "paths",
+) -> Path:
     """Return the last remembered directory for ``key``.
 
     If the key has not been stored yet, returns ``default_dir``.
     """
-    stored = config[CONFIG_SECTION].get(key)
+    stored = config[section].get(key)
     return Path(stored).expanduser() if stored else default_dir
 
 
-def _remember_last_dir(config_path: Path, config: configparser.ConfigParser, key: str, directory: Path) -> None:
+def _remember_last_dir(
+    config_path: Path,
+    config: configparser.ConfigParser,
+    key: str,
+    directory: Path,
+    section: str = "paths",
+) -> None:
     """Store the directory for ``key`` in the INI file."""
-    config[CONFIG_SECTION][key] = str(directory)
+    config[section][key] = str(directory)
     _save_config(config_path, config)
 
 
@@ -164,12 +163,14 @@ def ask_open_file(
     Path | None
         The selected file path, or None when the user cancels.
     """
+    filename = "file_dialog.ini"
+    section = "paths"
     repo_root = find_repo_root(start, prefer_cwd=True)
-    config_path = _config_path(repo_root)
-    config = _load_config(config_path)
+    config_path = get_config_path(filename, start=start, prefer_cwd=True)
+    config = _load_config(config_path, section=section)
 
     fallback_dir = default_dir or repo_root
-    initial_dir = _get_last_dir(config, key, fallback_dir)
+    initial_dir = _get_last_dir(config, key, fallback_dir, section=section)
 
     # Tkinter requires a root window even when we only show a file dialog.
     # We hide it so we don't get an extra empty window popping up.
@@ -194,7 +195,9 @@ def ask_open_file(
         return None
 
     chosen_path = Path(path).expanduser().resolve()
-    _remember_last_dir(config_path, config, key, chosen_path.parent)
+    _remember_last_dir(
+        config_path, config, key, chosen_path.parent, section=section
+    )
     return chosen_path
 
 
@@ -214,12 +217,14 @@ def ask_directory(
     Path | None
         The selected directory path, or None when the user cancels.
     """
+    filename = "file_dialog.ini"
+    section = "paths"
     repo_root = find_repo_root(start, prefer_cwd=True)
-    config_path = _config_path(repo_root)
-    config = _load_config(config_path)
+    config_path = get_config_path(filename, start=start, prefer_cwd=True)
+    config = _load_config(config_path, section=section)
 
     fallback_dir = default_dir or repo_root
-    initial_dir = _get_last_dir(config, key, fallback_dir)
+    initial_dir = _get_last_dir(config, key, fallback_dir, section=section)
 
     # Create and hide a root window; required for the dialog to work.
     root = Tk()
@@ -242,5 +247,35 @@ def ask_directory(
 
     chosen_path = Path(selected).expanduser().resolve()
     print(f"Selected directory: {chosen_path}")
-    _remember_last_dir(config_path, config, key, chosen_path.parent)
+    _remember_last_dir(
+        config_path, config, key, chosen_path.parent, section=section
+    )
     return chosen_path
+
+
+def read_repo_config_value(
+    key: str,
+    filename: str = "file_dialog.ini",
+    section: str = "paths",
+    start: Path | None = None,
+    prefer_cwd: bool = True,
+) -> str | None:
+    """Return the stored value for ``key`` in ``section`` of ``filename``."""
+    config_path = get_config_path(filename, start=start, prefer_cwd=prefer_cwd)
+    config = _load_config(config_path, section=section)
+    return config[section].get(key)
+
+
+def write_repo_config_value(
+    key: str,
+    value: str,
+    filename: str = "file_dialog.ini",
+    section: str = "paths",
+    start: Path | None = None,
+    prefer_cwd: bool = True,
+) -> None:
+    """Store ``value`` for ``key`` in ``section`` of ``filename``."""
+    config_path = get_config_path(filename, start=start, prefer_cwd=prefer_cwd)
+    config = _load_config(config_path, section=section)
+    config[section][key] = value
+    _save_config(config_path, config)

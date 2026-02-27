@@ -17,8 +17,7 @@ from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
 def prompt_yes_no(prompt: str, default: bool = True) -> bool:
     """Prompt the user for a yes/no response."""
-    default_str = "y" if default else "n"
-    answer = input(f"{prompt} [{default_str}] ").strip().lower()
+    answer = input(f"{prompt}] ").strip().lower()
     if answer == "":
         return default
     return answer in {"y", "yes"}

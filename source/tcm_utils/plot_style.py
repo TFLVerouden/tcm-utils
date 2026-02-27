@@ -99,12 +99,6 @@ def use_tcm_poster_style() -> None:
     plt.rcParams["legend.columnspacing"] = 0.6
 
 
-def use_flow_rate_model_style() -> None:
-    """Backward-compatible alias for older scripts."""
-
-    use_tcm_poster_style()
-
-
 def add_label(
     ax,
     text: str,
@@ -488,15 +482,3 @@ def plot_binned_area(
         )
 
     return None
-
-
-def plot_continuous_bar(*args, **kwargs):
-    """Backward-compatible alias; prefer plot_continuous_area."""
-
-    return plot_binned_area(*args, **kwargs)
-
-
-def plot_continuous_area(*args, **kwargs):
-    """Backward-compatible alias; prefer plot_binned_area."""
-
-    return plot_binned_area(*args, **kwargs)

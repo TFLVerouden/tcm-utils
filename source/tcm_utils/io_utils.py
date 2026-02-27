@@ -5,7 +5,7 @@ import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Iterable, Callable, Sequence, Literal
+from typing import Any, Iterable, Callable, Sequence, Literal, overload
 
 import cv2 as cv
 import numpy as np
@@ -21,6 +21,90 @@ def prompt_yes_no(prompt: str, default: bool = True) -> bool:
     if answer == "":
         return default
     return answer in {"y", "yes"}
+
+
+@overload
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["string"] = "string",
+    allow_empty: Literal[False] = False,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> str:
+    ...
+
+
+@overload
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["string"] = "string",
+    allow_empty: Literal[True],
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> str | None:
+    ...
+
+
+@overload
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["float"],
+    allow_empty: Literal[False] = False,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> float:
+    ...
+
+
+@overload
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["float"],
+    allow_empty: Literal[True],
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> float | None:
+    ...
+
+
+@overload
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["int"],
+    allow_empty: Literal[False] = False,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> int:
+    ...
+
+
+@overload
+def prompt_input(
+    prompt: str,
+    *,
+    value_type: Literal["int"],
+    allow_empty: Literal[True],
+    min_value: float | None = None,
+    max_value: float | None = None,
+    exclusive_min: bool = False,
+    exclusive_max: bool = False,
+) -> int | None:
+    ...
 
 
 def prompt_input(

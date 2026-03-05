@@ -471,7 +471,7 @@ def plot_binned_area(
 
     if outline:
         # Keep outline below axis spines; raise_axis_frame(ax) can place spines above.
-        return ax.stairs(
+        outline_artist = ax.stairs(
             heights_arr + baseline,
             x_edges_arr,
             baseline=baseline,
@@ -480,5 +480,8 @@ def plot_binned_area(
             linewidth=outline_linewidth,
             zorder=zorder_outline,
         )
+        raise_axis_frame(ax)
+        return outline_artist
+    raise_axis_frame(ax)
 
     return None

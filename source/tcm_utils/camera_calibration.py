@@ -140,7 +140,8 @@ def _select_roi_colored(img_gray: np.ndarray, color=(255, 0, 255)) -> tuple[int,
         if finished:
             break
 
-    cv.destroyWindow("Calibration ROI")
+    # cv.destroyWindow("Calibration ROI")
+    # TODO: Seems to be broken (might be due to version of opencv?)
     return rect
 
 
@@ -219,6 +220,7 @@ def run_calibration(
 ) -> int:
     repo_root = find_repo_root(Path(__file__))
     default_output = repo_root / "examples" / "calibration_demo"
+    # TODO: Ask user for directory if not provided in function arguments
     output_folder = (output_dir or default_output)
     output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -417,7 +419,7 @@ def run_calibration(
     print(f"Metadata written to {metadata_path}")
     print(
         f"Estimated scale: {mm_per_px:.6f} mm/px (spacing {spacing_px:.3f} px)")
-    return 0
+    return mm_per_px
 
 
 def ensure_calibration(

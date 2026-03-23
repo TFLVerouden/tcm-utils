@@ -187,7 +187,8 @@ def ask_open_file(
         pass  # Fallback if tk::PlaceWindow not available
 
     # Keep a small UX hint in the console for CLI workflows.
-    print(title)
+    print(title, end=" ")
+    print("(use Alt+Tab if window was accidentally unfocussed)")
     path = filedialog.askopenfilename(title=title, initialdir=str(initial_dir),
                                       filetypes=(("All files", "*.*"),))
     root.destroy()
@@ -237,7 +238,8 @@ def ask_directory(
     except Exception:
         pass
 
-    print(title)
+    print(title, end=" ")
+    print("(use Alt+Tab if window was accidentally unfocussed)")
     selected = filedialog.askdirectory(
         title=title, initialdir=str(initial_dir))
     root.destroy()

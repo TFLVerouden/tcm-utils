@@ -253,6 +253,31 @@ def ask_directory(
     return chosen_path
 
 
+def ensure_directory_path(
+    value: str | Path | None,
+    *,
+    key: str,
+    title: str = "Select directory",
+    default_dir: Path | None = None,
+    start: Path | None = None,
+) -> Path | None:
+    """Return a directory path, prompting the user if value is missing.
+
+    Missing values are None or strings that become empty after stripping.
+    """
+    if value is not None:
+        normalized = str(value).strip()
+        if normalized:
+            return Path(normalized).expanduser()
+
+    return ask_directory(
+        key=key,
+        title=title,
+        default_dir=default_dir,
+        start=start,
+    )
+
+
 def read_repo_config_value(
     key: str,
     filename: str = "file_dialog.ini",

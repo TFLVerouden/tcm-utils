@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterable, Callable, Sequence, Literal, overload
@@ -13,6 +15,69 @@ import tifffile
 from tqdm import tqdm
 
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
+
+
+def make_minimal_progress_bar(
+    *,
+    total: int,
+    label: str,
+    unit_label: str,
+    bar_width: int = 16,
+    leave: bool = True,
+) -> tqdm:
+    """Create a minimal tqdm bar with constant bar width across labels."""
+    count_width = max(1, len(str(total)))
+    bar_format = (
+        f"{label}: {{bar}}| "
+        f"{{n:>{count_width}.0f}}/{{total:.0f}} {unit_label}"
+    )
+
+    fixed_tail = f"| {0:>{count_width}d}/{total} {unit_label}"
+    ncols = len(f"{label}: ") + bar_width + len(fixed_tail)
+
+    return tqdm(
+        total=total,
+        unit=unit_label,
+        ncols=ncols,
+        leave=leave,
+        bar_format=bar_format,
+    )
+
+
+def wait_with_progress(
+    wait_s: float,
+    *,
+    label: str = "Waiting before starting next run",
+    bar_width: int = 16,
+    tick_s: float = 0.05,
+) -> None:
+    """Wait for ``wait_s`` with precise timing and integer-second bar updates."""
+    if wait_s <= 0:
+        return
+
+    total_s = int(math.ceil(wait_s))
+    start_time = time.perf_counter()
+    next_tick = start_time
+
+    with make_minimal_progress_bar(
+        total=total_s,
+        label=label,
+        unit_label="s",
+        bar_width=bar_width,
+    ) as pbar:
+        while (time.perf_counter() - start_time) < wait_s:
+            next_tick += tick_s
+            sleep_for = next_tick - time.perf_counter()
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+
+            elapsed_whole_s = int(
+                min(total_s, time.perf_counter() - start_time))
+            if elapsed_whole_s > pbar.n:
+                pbar.update(elapsed_whole_s - pbar.n)
+
+        if pbar.n < total_s:
+            pbar.update(total_s - pbar.n)
 
 
 def prompt_yes_no(prompt: str, default: bool = True) -> bool:

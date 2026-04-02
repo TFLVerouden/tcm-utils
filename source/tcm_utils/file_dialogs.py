@@ -18,6 +18,7 @@ left it in.
 
 from pathlib import Path
 import configparser
+from typing import Literal, overload
 from tkinter import Tk, filedialog
 
 CONFIG_DIRNAME = ".config"
@@ -202,21 +203,51 @@ def ask_open_file(
     return chosen_path
 
 
+@overload
 def ask_directory(
     key: str,
     title: str = "Select directory",
     default_dir: Path | None = None,
     start: Path | None = None,
+    multiple: Literal[False] = False,
 ) -> Path | None:
+    ...
+
+
+@overload
+def ask_directory(
+    key: str,
+    title: str = "Select directory",
+    default_dir: Path | None = None,
+    start: Path | None = None,
+    multiple: Literal[True] = True,
+) -> list[Path] | None:
+    ...
+
+
+def ask_directory(
+    key: str,
+    title: str = "Select directory",
+    default_dir: Path | None = None,
+    start: Path | None = None,
+    multiple: bool = False,
+) -> Path | list[Path] | None:
     """Ask the user to select a directory.
 
     Works like :func:`ask_open_file`, but uses a directory picker and remembers
     the last used directory per ``key``.
 
+    Parameters
+    ----------
+    multiple:
+        When True, repeatedly prompts for directories until the user cancels,
+        and returns all selected directories. Defaults to False.
+
     Returns
     -------
-    Path | None
-        The selected directory path, or None when the user cancels.
+    Path | list[Path] | None
+        A selected directory path (default mode), a list of selected
+        directory paths (``multiple=True``), or None when cancelled.
     """
     filename = "file_dialog.ini"
     section = "paths"
@@ -240,19 +271,51 @@ def ask_directory(
 
     print(title, end=" ")
     print("(use Alt+Tab if window was accidentally unfocussed)")
-    selected = filedialog.askdirectory(
-        title=title, initialdir=str(initial_dir))
+
+    if not multiple:
+        selected = filedialog.askdirectory(
+            title=title,
+            initialdir=str(initial_dir),
+        )
+        root.destroy()
+
+        if not selected:
+            return None
+
+        chosen_path = Path(selected).expanduser().resolve()
+        print(f"Selected directory: {chosen_path}")
+        _remember_last_dir(
+            config_path, config, key, chosen_path, section=section
+        )
+        return chosen_path
+
+    selected_paths: list[Path] = []
+    current_initial = initial_dir
+    while True:
+        selected = filedialog.askdirectory(
+            title=title,
+            initialdir=str(current_initial),
+        )
+        if not selected:
+            break
+
+        chosen_path = Path(selected).expanduser().resolve()
+        selected_paths.append(chosen_path)
+        current_initial = chosen_path
+        print(
+            "Selected directory: "
+            f"{chosen_path} (Cancel to finish multi-selection)"
+        )
+
     root.destroy()
 
-    if not selected:
+    if not selected_paths:
         return None
 
-    chosen_path = Path(selected).expanduser().resolve()
-    print(f"Selected directory: {chosen_path}")
     _remember_last_dir(
-        config_path, config, key, chosen_path.parent, section=section
+        config_path, config, key, selected_paths[-1], section=section
     )
-    return chosen_path
+    return selected_paths
 
 
 def ensure_directory_path(

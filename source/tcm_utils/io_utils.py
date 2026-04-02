@@ -71,7 +71,8 @@ def wait_with_progress(
             if sleep_for > 0:
                 time.sleep(sleep_for)
 
-            elapsed_whole_s = int(min(total_s, time.perf_counter() - start_time))
+            elapsed_whole_s = int(
+                min(total_s, time.perf_counter() - start_time))
             if elapsed_whole_s > pbar.n:
                 pbar.update(elapsed_whole_s - pbar.n)
 
@@ -249,6 +250,26 @@ def prompt_input(
                 continue
 
         return value_num
+
+
+def ensure_non_empty_text(
+    value: str | None,
+    *,
+    prompt: str,
+    empty_error: str = "Input cannot be empty.",
+) -> str:
+    """Return a non-empty text value, prompting user when missing."""
+    if value is not None:
+        normalized = str(value).strip()
+        if normalized:
+            return normalized
+
+    while True:
+        prompted = prompt_input(prompt, value_type="string", allow_empty=True)
+        normalized = "" if prompted is None else str(prompted).strip()
+        if normalized:
+            return normalized
+        print(empty_error)
 
 
 def path_relative_to(path: Path, root: Path) -> str:

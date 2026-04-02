@@ -5,9 +5,19 @@ from datetime import datetime
 from pathlib import Path
 
 
-def timestamp_str() -> str:
-    """Return a standard timestamp string (local time) for filenames (YYMMDD_HHMMSS)."""
-    return datetime.now().strftime("%y%m%d_%H%M%S")
+def timestamp_str(
+    dt_value: datetime | None = None,
+    include_us: bool = False,
+) -> str:
+    """Return a timestamp string for filenames.
+
+    Defaults to local current time in ``YYMMDD_HHMMSS`` format.
+    Optionally pass ``dt_value`` to format a specific datetime and set
+    ``include_us=True`` to append ``_ffffff``.
+    """
+    dt = datetime.now() if dt_value is None else dt_value
+    fmt = "%y%m%d_%H%M%S_%f" if include_us else "%y%m%d_%H%M%S"
+    return dt.strftime(fmt)
 
 
 def timestamp_from_file(path: str | os.PathLike, prefer_creation: bool = True) -> str:

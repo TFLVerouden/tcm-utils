@@ -180,6 +180,7 @@ def set_grid(
     on: bool = True,
     which: str = "major",
     zorder: float = 0,
+    **grid_kwargs,
 ) -> None:
     """Grid helper with horizontal/vertical/both modes.
 
@@ -189,6 +190,9 @@ def set_grid(
     - none       => no grid
 
     Always forces gridlines to a low z-order.
+
+    Extra keyword arguments are forwarded to ``ax.grid`` so callers can use
+    regular Matplotlib styling options (e.g. color, alpha, linestyle).
     """
 
     ax.set_axisbelow(True)
@@ -196,13 +200,13 @@ def set_grid(
     if mode == "none" or not on:
         ax.grid(False)
     elif mode == "horizontal":
-        ax.grid(True, axis="y", which=which)
+        ax.grid(True, axis="y", which=which, **grid_kwargs)
         ax.grid(False, axis="x")
     elif mode == "vertical":
-        ax.grid(True, axis="x", which=which)
+        ax.grid(True, axis="x", which=which, **grid_kwargs)
         ax.grid(False, axis="y")
     elif mode == "both":
-        ax.grid(True, which=which)
+        ax.grid(True, which=which, **grid_kwargs)
     else:
         raise ValueError(
             "mode must be one of: none, horizontal, vertical, both")

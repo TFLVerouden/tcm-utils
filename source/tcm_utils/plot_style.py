@@ -108,6 +108,7 @@ def add_label(
     ha: str = "left",
     va: str = "top",
     italic: bool = True,
+    bold: bool = False,
     fontsize: float | None = None,
     color: str = "black"
 ) -> None:
@@ -124,7 +125,11 @@ def add_label(
     # don't have to specify the font in multiple places.
     sans_list = plt.rcParams.get("font.sans-serif") or []
     family = sans_list[0] if len(sans_list) > 0 else "sans-serif"
-    fp = FontProperties(family=family, style="italic" if italic else "normal")
+    fp = FontProperties(
+        family=family,
+        style="italic" if italic else "normal",
+        weight="bold" if bold else "normal",
+    )
 
     if coord_system == "axes":
         transform = ax.transAxes

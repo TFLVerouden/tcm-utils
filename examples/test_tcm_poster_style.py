@@ -15,7 +15,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tcm_utils.cough_model import CoughModel
-from tcm_utils.cvd_check import set_cvd_friendly_colors
 from tcm_utils.plot_style import (
     add_label,
     append_unit_to_last_ticklabel,
@@ -27,8 +26,7 @@ from tcm_utils.plot_style import (
     set_ticks_every
 )
 
-use_tcm_poster_style()
-colors = set_cvd_friendly_colors()
+use_tcm_poster_style(cvd_friendly=True, dark_mode=False)
 
 # --- Model: 70 kg / 1.93 m male ---
 model = CoughModel.from_gupta("Male", weight_kg=70, height_m=1.93)
@@ -41,7 +39,7 @@ out_dir.mkdir(parents=True, exist_ok=True)
 # ========== Demo 1: cough model (linear axes) ==========
 fig1, ax1 = plt.subplots(1, 1, figsize=(4.0, 3.0), constrained_layout=True)
 set_grid(ax1, mode="horizontal", on=False)
-ax1.plot(t_s, q_lps, color=colors[0])
+ax1.plot(t_s, q_lps, color="C0")
 ax1.set_ylabel("Flow rate (L/s)")
 ax1.set_xlim(0, 0.5)
 ax1.set_ylim(0, max(1.0, float(np.nanmax(q_lps)) * 1.05))
@@ -75,10 +73,10 @@ plot_binned_area(
     heights,
     x_mode="centers",
     edge_method="log",
-    color=colors[1],
+    color="C1",
     alpha=0.22,
     outline=True,
-    outline_color=colors[1],
+    outline_color="C1",
     white_underlay=True,
     zorder_fill=6,
     zorder_outline=7,

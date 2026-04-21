@@ -1,0 +1,17 @@
+# tcm_utils - tcm-poster dark overrides
+# Layer this on top of tcm-poster.mplstyle so unchanged settings are inherited.
+
+# --- Figure / Axes backgrounds ---
+axes.facecolor: black
+savefig.facecolor: none
+
+# --- Text / spines / ticks ---
+text.color: white
+axes.edgecolor: white
+axes.labelcolor: white
+axes.titlecolor: white
+xtick.color: white
+ytick.color: white
+
+# --- Grid ---
+grid.color: 0.35

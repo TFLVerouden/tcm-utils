@@ -20,7 +20,7 @@ svg.fonttype: none
 figure.facecolor: none
 figure.edgecolor: none
 axes.facecolor: white
-savefig.transparent: True
+# savefig.transparent: True
 savefig.facecolor: none
 savefig.edgecolor: none
 

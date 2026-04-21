@@ -2,7 +2,9 @@
 
 This module provides a bundled Matplotlib style file ("tcm-poster") intended
 to match the poster look: thick black spines, outward ticks, large PT Sans
-fonts, white axes background, and transparent figure background.
+fonts, white axes background, and transparent figure background. The dark 
+variant is layered on top of the base poster style so it inherits all unchanged
+settings automatically.
 """
 
 from __future__ import annotations
@@ -29,42 +31,62 @@ def axes_frac_to_data(ax, xy: tuple[float, float]) -> tuple[float, float]:
     return float(x_data), float(y_data)
 
 
-def use_tcm_poster_style() -> None:
-    """Activate the bundled Matplotlib style: "tcm-poster"."""
+def use_tcm_poster_style(
+    *,
+    dark_mode: bool = False,
+    cvd_friendly: bool = False,
+    cvd_style: Literal["adjusted", "tableau-colorblind10"] = "adjusted",
+) -> None:
+    """Activate the bundled Matplotlib poster style.
+
+    Args:
+        dark_mode:
+            If True, overlay the dark poster variant on top of the base style.
+        cvd_friendly:
+            If True, also apply the CVD-friendly Matplotlib color cycle.
+        cvd_style:
+            Color-cycle preset passed to ``set_cvd_friendly_colors`` when
+            ``cvd_friendly`` is enabled.
+    """
 
     import matplotlib.pyplot as plt
 
-    try:
-        from importlib.resources import files
+    from importlib.resources import files
 
-        pkg_root = files("tcm_utils")
-        style_path = pkg_root.joinpath("styles", "tcm-poster.mplstyle")
+    pkg_root = files("tcm_utils")
+    style_paths = [pkg_root.joinpath("styles", "tcm-poster.mplstyle")]
+    if dark_mode:
+        style_paths.append(
+            pkg_root.joinpath("styles", "tcm-poster-dark.mplstyle")
+        )
 
-        # Ensure Matplotlib sees PT Sans italic/bold faces.
-        # On macOS the system TTC sometimes exposes only Regular to Matplotlib,
-        # so we ship the TTFs and register them at runtime.
-        fonts_dir = pkg_root.joinpath("fonts")
-        font_paths = []
-        try:
-            for name in [
-                "PTSans-Regular.ttf",
-                "PTSans-Italic.ttf",
-                "PTSans-Bold.ttf",
-                "PTSans-BoldItalic.ttf",
-            ]:
-                p = fonts_dir.joinpath(name)
-                if p.is_file():
-                    font_paths.append(str(p))
-        except Exception:
-            font_paths = []
+    missing_style_paths = [str(path)
+                           for path in style_paths if not path.is_file()]
+    if missing_style_paths:
+        raise FileNotFoundError(
+            "Bundled Matplotlib style file(s) not found: "
+            + ", ".join(missing_style_paths)
+        )
 
-        if font_paths:
-            register_fonts(font_paths)
+    # Ensure Matplotlib sees PT Sans italic/bold faces.
+    # On macOS the system TTC sometimes exposes only Regular to Matplotlib,
+    # so we ship the TTFs and register them at runtime.
+    fonts_dir = pkg_root.joinpath("fonts")
+    font_paths = []
+    for name in [
+        "PTSans-Regular.ttf",
+        "PTSans-Italic.ttf",
+        "PTSans-Bold.ttf",
+        "PTSans-BoldItalic.ttf",
+    ]:
+        p = fonts_dir.joinpath(name)
+        if p.is_file():
+            font_paths.append(str(p))
 
-        plt.style.use(str(style_path))
-    except Exception:
-        # Fallback: if package resources aren't available for some reason.
-        plt.style.use("default")
+    if font_paths:
+        register_fonts(font_paths)
+
+    plt.style.use([str(path) for path in style_paths])
 
     # Keep stroke weights consistent: frame, ticks, and gridlines.
     # (Makes log/log or broken-axis plots look much cleaner.)
@@ -75,9 +97,12 @@ def use_tcm_poster_style() -> None:
     plt.rcParams["ytick.major.width"] = lw
     plt.rcParams["ytick.minor.width"] = lw
 
-    # Always keep the axes (plot area) background white.
-    # The outer figure background can remain transparent if desired.
-    plt.rcParams["axes.facecolor"] = "white"
+    # In both light and dark modes, keep the area outside axes transparent.
+    plt.rcParams["axes.facecolor"] = "black" if dark_mode else "white"
+    plt.rcParams["figure.facecolor"] = "none"
+    plt.rcParams["figure.edgecolor"] = "none"
+    plt.rcParams["savefig.facecolor"] = "none"
+    plt.rcParams["savefig.edgecolor"] = "none"
 
     # IMPORTANT: don't use Matplotlib's global savefig transparency.
     # If savefig.transparent=True, Matplotlib makes BOTH the figure and axes
@@ -98,6 +123,11 @@ def use_tcm_poster_style() -> None:
     plt.rcParams["legend.handletextpad"] = 0.4
     plt.rcParams["legend.columnspacing"] = 0.6
 
+    if cvd_friendly:
+        from .cvd_check import set_cvd_friendly_colors
+
+        set_cvd_friendly_colors(style=cvd_style)
+
 
 def add_label(
     ax,
@@ -110,7 +140,7 @@ def add_label(
     italic: bool = True,
     bold: bool = False,
     fontsize: float | None = None,
-    color: str = "black"
+    color: str | None = None,
 ) -> None:
     """Add a text label inside the axes (legend replacement)."""
 
@@ -120,6 +150,9 @@ def add_label(
     if fontsize is None:
         # Match tick label size (not axis label size).
         fontsize = float(plt.rcParams.get("xtick.labelsize", 10))
+
+    if color is None:
+        color = str(plt.rcParams.get("text.color", "black"))
 
     # Derive font family from the currently active style (rcParams) so callers
     # don't have to specify the font in multiple places.
@@ -283,7 +316,7 @@ def add_broken_xaxis_marks(
     *,
     length_points: float = 12.0,
     linewidth: float | None = None,
-    color: str = "k",
+    color: str | None = None,
     inset_points: float = 0.0,
     angle_deg: float = 45.0,
 ) -> None:
@@ -306,6 +339,9 @@ def add_broken_xaxis_marks(
 
     if linewidth is None:
         linewidth = float(plt.rcParams.get("axes.linewidth", 1.0))
+
+    if color is None:
+        color = str(ax_left.spines["right"].get_edgecolor())
 
     b0 = ax_left.get_position()
     b1 = ax_right.get_position()
@@ -460,7 +496,7 @@ def plot_binned_area(
             x_edges_arr,
             baseline=baseline,
             fill=True,
-            facecolor="white",
+            facecolor=ax.get_facecolor(),
             edgecolor="none",
             linewidth=0.0,
             zorder=zorder_fill,

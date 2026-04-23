@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from tcm_utils.cough_model import CoughModel
-from tcm_utils.cvd_check import set_cvd_friendly_colors
+from tcm_utils.plot_style import use_tcm_poster_style
 
 
 # Output directory
@@ -17,8 +17,8 @@ output_dir = Path(__file__).parent.parent / \
     "examples" / "cough_model_outputs"
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Setup CVD-friendly colors
-colors = set_cvd_friendly_colors()
+# Use poster style
+use_tcm_poster_style(cvd_friendly=True, dark_mode=True)
 
 # Get available example coughs
 examples = CoughModel.available_examples()

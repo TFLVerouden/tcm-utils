@@ -344,7 +344,7 @@ class CoughModel:
 
             citation = get_cough_citation("Gupta model", data_dir=data_dir)
             if self._gupta_subject is not None:
-                citation["short"] = f"{citation['short']}: {self._gupta_subject}"
+                citation["short"] = f"{citation['short']}:\n{self._gupta_subject}"
                 citation["subject"] = self._gupta_subject
             return citation
 

@@ -126,8 +126,8 @@ ax2_lin.plot(t_test, q_test, label="Test: 70kg, 1.93m Male",
 ax2_norm.plot(tau_test, m_test, label="Test: 70kg, 1.93m Male",
               linestyle=":", color="black", linewidth=2.5)
 
-ax2_lin.legend(loc="best", frameon=True, fontsize=9)
-ax2_norm.legend(loc="best", frameon=True, fontsize=9)
+ax2_lin.legend(loc="best", frameon=True)
+ax2_norm.legend(loc="best", frameon=True)
 
 plt.tight_layout()
 

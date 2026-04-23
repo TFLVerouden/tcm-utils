@@ -112,12 +112,12 @@ def use_tcm_poster_style(
 
     # Slightly larger legends by default
     tick_fs = float(plt.rcParams.get("xtick.labelsize", 3))
-    plt.rcParams["legend.fontsize"] = tick_fs
-    plt.rcParams["legend.title_fontsize"] = tick_fs
+    # plt.rcParams["legend.fontsize"] = tick_fs
+    # plt.rcParams["legend.title_fontsize"] = tick_fs
 
     # More compact legend layout by default
-    plt.rcParams["legend.borderaxespad"] = 0.2
-    plt.rcParams["legend.borderpad"] = 0.2
+    # plt.rcParams["legend.borderaxespad"] = 0.2
+    # plt.rcParams["legend.borderpad"] = 0.2
     plt.rcParams["legend.labelspacing"] = 0.25
     plt.rcParams["legend.handlelength"] = 1.2
     plt.rcParams["legend.handletextpad"] = 0.4

@@ -64,3 +64,4 @@ grid.linestyle: --
 # --- Legend (avoid; prefer in-axes label text) ---
 legend.frameon: False
 legend.fontsize: 14
+legend.title_fontsize: 14

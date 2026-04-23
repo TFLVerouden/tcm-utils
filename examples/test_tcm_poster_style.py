@@ -26,7 +26,7 @@ from tcm_utils.plot_style import (
     set_ticks_every
 )
 
-use_tcm_poster_style(cvd_friendly=True, dark_mode=False)
+colors = use_tcm_poster_style(cvd_friendly=True, dark_mode=False)
 
 # --- Model: 70 kg / 1.93 m male ---
 model = CoughModel.from_gupta("Male", weight_kg=70, height_m=1.93)

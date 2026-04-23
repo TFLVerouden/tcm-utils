@@ -36,7 +36,7 @@ def use_tcm_poster_style(
     dark_mode: bool = False,
     cvd_friendly: bool = False,
     cvd_style: Literal["adjusted", "tableau-colorblind10"] = "adjusted",
-) -> None:
+) -> list[str]:
     """Activate the bundled Matplotlib poster style.
 
     Args:
@@ -127,6 +127,9 @@ def use_tcm_poster_style(
         from .cvd_check import set_cvd_friendly_colors
 
         set_cvd_friendly_colors(style=cvd_style)
+
+    # Return the current color cycle
+    return plt.rcParams.get("axes.prop_cycle").by_key().get("color", None)
 
 
 def add_label(

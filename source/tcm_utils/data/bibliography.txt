@@ -1,0 +1,28 @@
+[Results_Gupta.csv]
+short = Gupta et al. (2009)
+full = Gupta, J. K., Lin, C.-H. & Chen, Q. Flow dynamics and characterization of a cough. Indoor Air 19, 517-525 (2009).
+aliases = Gupta model
+
+[Results_Feinstein.csv]
+short = Feinstein et al. (2017)
+full = Feinstein, A. J., Zhang, Z., Chhetri, D. K. & Long, J. Measurement of Cough Aerodynamics in Healthy Adults. Annals of Otology, Rhinology and Laryngology 126, 396-400 (2017).
+
+[Results_King.csv]
+short = King et al. (1985)
+full = King, M., Brock, G. & Lundell, C. Clearance of mucus by simulated cough. Journal of Applied Physiology 58, 1776-1782 (1985).
+
+[Results_Knudson.csv]
+short = Knudson et al. (1974)
+full = Knudson, R. J., Mead, J. & Knudson, D. E. Contribution of airway collapse to supramaximal expiratory flows. Journal of Applied Physiology 36, (1974).
+
+[Results_Mahajan.csv]
+short = Mahajan et al. (1994)
+full = Mahajan, R. P., Singh, P., Murty, G. E. & Aitkenhead, A. R. Relationship between expired lung volume, peak flow rate and peak velocity time during a voluntary cough manoeuvre. British Journal of Anaesthesia 72, 298-301 (1994).
+
+[Results_Ross.csv]
+short = Ross et al. (1955)
+full = Ross, B. B., Gramiak, R. & Rahn, H. Physical dynamics of the cough mechanism. Cough Dynamics (1955).
+
+[Results_Smith.csv]
+short = Smith et al. (2012)
+full = Smith, J. A. et al. Chest wall dynamics during voluntary and induced cough in healthy volunteers. Journal of Physiology 590, 563-574 (2012).

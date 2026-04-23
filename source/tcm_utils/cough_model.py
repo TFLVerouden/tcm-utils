@@ -8,7 +8,9 @@ velocimetry workflows.
 
 from __future__ import annotations
 
+from configparser import ConfigParser
 from dataclasses import dataclass
+from functools import lru_cache
 from math import gamma as _gamma
 from pathlib import Path
 from typing import Iterable, Tuple
@@ -17,6 +19,7 @@ import numpy as np
 
 # Path to example cough datasets (CSV) shipped in this repository.
 _DEFAULT_EXAMPLE_DIR = Path(__file__).resolve().parent / "data"
+_DEFAULT_BIBLIOGRAPHY_PATH = _DEFAULT_EXAMPLE_DIR / "bibliography.txt"
 
 
 @dataclass
@@ -148,12 +151,14 @@ class CoughModel:
         *,
         gupta_params: GuptaParams | None,
         source: str,
+        gupta_subject: str | None = None,
         example_name: str | None = None,
         example_time_s: np.ndarray | None = None,
         example_flow_lps: np.ndarray | None = None,
     ) -> None:
         self._gupta_params = gupta_params
         self._source = source
+        self._gupta_subject = gupta_subject
         self._example_name = example_name
         self._example_time_s = example_time_s
         self._example_flow_lps = example_flow_lps
@@ -186,13 +191,15 @@ class CoughModel:
                 cpfr_lps=cpfr_lps,
                 cev_l=cev_l,
             )
+            gupta_subject = None
         else:
             if gender is None or weight_kg is None or height_m is None:
                 raise ValueError(
                     "Provide either explicit pvt/cpfr/cev or gender, weight_kg, height_m")
             params = estimate_gupta_parameters(gender, weight_kg, height_m)
+            gupta_subject = _format_gupta_subject(gender, weight_kg, height_m)
 
-        return cls(gupta_params=params, source="gupta2009")
+        return cls(gupta_params=params, source="gupta2009", gupta_subject=gupta_subject)
 
     @classmethod
     def from_example(cls, name: str, *, data_dir: Path | None = None) -> "CoughModel":
@@ -321,12 +328,123 @@ class CoughModel:
         vel = flow_to_velocity(flow_m3ps, depth_m=depth_m, width_m=width_m)
         return time_s, vel
 
+    def citation(self, *, data_dir: Path | None = None) -> dict[str, str]:
+        """Get bibliography metadata for this cough source.
+
+        Returns a dictionary with keys:
+            - key: bibliography section key (e.g. Results_Gupta.csv)
+            - short: short reference label
+            - full: full reference text
+            - aliases: alias list as a comma-separated string
+        """
+        if self._source == "gupta2009":
+            if self._gupta_params is None:
+                raise RuntimeError(
+                    "Gupta parameters missing for citation lookup")
+
+            citation = get_cough_citation("Gupta model", data_dir=data_dir)
+            if self._gupta_subject is not None:
+                citation["short"] = f"{citation['short']}: {self._gupta_subject}"
+                citation["subject"] = self._gupta_subject
+            return citation
+
+        if self._source == "example":
+            if self._example_name is None:
+                raise RuntimeError("Example name missing for citation lookup")
+            return get_cough_citation(self._example_name, data_dir=data_dir)
+
+        raise RuntimeError(f"Unknown cough source '{self._source}'")
+
 
 def _find_example_paths(data_dir: Path | None = None) -> list[Path]:
     root = data_dir or _DEFAULT_EXAMPLE_DIR
     if not root.exists():
         return []
     return [p for p in root.iterdir() if p.suffix.lower() == ".csv" and p.stem.startswith("Results_")]
+
+
+def _resolve_bibliography_path(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        return _DEFAULT_BIBLIOGRAPHY_PATH
+
+    candidate = data_dir / "bibliography.txt"
+    if candidate.exists():
+        return candidate
+    return _DEFAULT_BIBLIOGRAPHY_PATH
+
+
+def _normalize_citation_name(name: str) -> str:
+    s = name.strip().lower()
+    s = s.removesuffix(".csv").removesuffix(".npz")
+    s = s.removeprefix("results_")
+    return " ".join(s.replace("-", " ").replace("_", " ").split())
+
+
+def _format_gupta_subject(gender: str, weight_kg: float, height_m: float) -> str:
+    gender_txt = gender.strip().lower()
+    weight_txt = f"{weight_kg:.0f}" if float(
+        weight_kg).is_integer() else f"{weight_kg:.2f}"
+    return f"{height_m:.2f} m, {weight_txt} kg {gender_txt}"
+
+
+@lru_cache(maxsize=8)
+def _load_bibliography(bibliography_path: str) -> dict[str, dict[str, str]]:
+    path = Path(bibliography_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Bibliography file not found: {path}")
+
+    parser = ConfigParser()
+    parser.read(path, encoding="utf-8")
+
+    out: dict[str, dict[str, str]] = {}
+    for section in parser.sections():
+        full = parser.get(section, "full", fallback="").strip()
+        short = parser.get(section, "short", fallback="").strip()
+        aliases = parser.get(section, "aliases", fallback="").strip()
+        out[section] = {
+            "short": short,
+            "full": full,
+            "aliases": aliases,
+        }
+    return out
+
+
+def available_citation_keys(*, data_dir: Path | None = None) -> list[str]:
+    """List citation keys available in bibliography.txt."""
+    bib_path = _resolve_bibliography_path(data_dir=data_dir)
+    entries = _load_bibliography(str(bib_path))
+    return sorted(entries.keys())
+
+
+def get_cough_citation(name: str, *, data_dir: Path | None = None) -> dict[str, str]:
+    """Get bibliography metadata for a cough dataset or model name.
+
+    Matching is case-insensitive and supports:
+        - full keys such as "Results_Gupta.csv"
+        - friendly names such as "Gupta"
+        - aliases listed in bibliography.txt (e.g. "Gupta model")
+    """
+    bib_path = _resolve_bibliography_path(data_dir=data_dir)
+    entries = _load_bibliography(str(bib_path))
+    target = _normalize_citation_name(name)
+
+    for key, meta in entries.items():
+        candidates = {
+            _normalize_citation_name(key),
+            _normalize_citation_name(Path(key).stem),
+        }
+        aliases = [a.strip() for a in meta["aliases"].split(",") if a.strip()]
+        candidates.update(_normalize_citation_name(a) for a in aliases)
+
+        if target in candidates:
+            return {
+                "key": key,
+                "short": meta["short"],
+                "full": meta["full"],
+                "aliases": ", ".join(aliases),
+            }
+
+    raise KeyError(f"No citation metadata found for '{name}'")
 
 
 def _match_example_path(name: str, data_dir: Path | None = None) -> Path:

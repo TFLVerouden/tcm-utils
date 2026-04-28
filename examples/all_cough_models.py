@@ -24,7 +24,8 @@ from tcm_utils.plot_style import (
 )
 # from tcm_utils.cvd_check import set_cvd_friendly_colors
 
-colors = use_tcm_poster_style(cvd_friendly=True, dark_mode=False)
+colors = use_tcm_poster_style(
+    cvd_friendly=True, dark_mode=True, black_white_first=True)
 # colors = set_cvd_friendly_colors()
 # Save to output directory
 out_dir = Path(__file__).parent / "cough_model_outputs"
@@ -61,8 +62,77 @@ marker_size = 7
 # Add your future Gupta-specific annotations here.
 
 
-def _add_stage1_annotations(ax_obj) -> None:
-    pass
+def _add_stage2_annotations(ax_obj, t_s, q_lps) -> None:
+    peak_idx = int(np.nanargmax(q_lps))
+    peak_time_s = float(t_s[peak_idx])
+    peak_flow_lps = float(q_lps[peak_idx])+0.1
+    annotation_color = "0.65"
+    flow_arrow_x = 0.50
+    pvt_arrow_y = 6.5
+    flow_line_y = peak_flow_lps
+
+    ax_obj.fill_between(
+        t_s,
+        q_lps,
+        0.0,
+        color=annotation_color,
+        alpha=0.18,
+        zorder=1,
+    )
+    ax_obj.text(
+        0.13,
+        2.2,
+        "Expiratory\nvolume",
+        color=annotation_color,
+        ha="center",
+        va="center",
+    )
+
+    ax_obj.annotate(
+        "",
+        xy=(flow_arrow_x, 0.0),
+        xytext=(flow_arrow_x, peak_flow_lps),
+        arrowprops=dict(arrowstyle="<->", color=annotation_color, lw=1.8),
+        zorder=5,
+    )
+    ax_obj.plot(
+        [peak_time_s, flow_arrow_x],
+        [flow_line_y, flow_line_y],
+        color=annotation_color,
+        linewidth=1.6,
+        zorder=5,
+    )
+    ax_obj.text(
+        flow_arrow_x + 0.012,
+        flow_line_y/2,
+        "Peak flow rate",
+        color=annotation_color,
+        ha="left",
+        va="center",
+    )
+
+    ax_obj.annotate(
+        "",
+        xy=(0.0, pvt_arrow_y),
+        xytext=(peak_time_s, pvt_arrow_y),
+        arrowprops=dict(arrowstyle="<->", color=annotation_color, lw=1.8),
+        zorder=5,
+    )
+    ax_obj.plot(
+        [peak_time_s, peak_time_s],
+        [peak_flow_lps, pvt_arrow_y],
+        color=annotation_color,
+        linewidth=1.6,
+        zorder=5,
+    )
+    ax_obj.text(
+        0.01,
+        pvt_arrow_y + 0.22,
+        "Peak\nvelocity\ntime",
+        color=annotation_color,
+        ha="left",
+        va="bottom",
+    )
 
 
 def _fixed_width_legend(ax_obj, *, width_axes: float = 0.44) -> None:
@@ -82,7 +152,7 @@ stage3_extra_examples = ["Results_Feinstein", "Results_Ross", "Results_Smith"]
 presentation_order = stage2_examples + stage3_extra_examples
 
 style_by_model_name = {
-    name: (colors[i % len(colors)], markers[i % len(markers)])
+    name: (colors[(i + 1) % len(colors)], markers[i % len(markers)])
     for i, name in enumerate(presentation_order)
 }
 
@@ -95,9 +165,13 @@ global_y_max = max(float(np.nanmax(q_gupta)), max(
 
 stages = [
     ("all_cough_models1_gupta_only", []),
-    ("all_cough_models2_plus_king_knudson_mahajan", stage2_examples),
+    ("all_cough_models2_gupta_annotated", []),
     (
-        "all_cough_models3_plus_feinstein_ross_smith",
+        "all_cough_models3_plus_king_knudson_mahajan",
+        stage2_examples,
+    ),
+    (
+        "all_cough_models4_plus_feinstein_ross_smith",
         stage2_examples + stage3_extra_examples,
     ),
 ]
@@ -110,7 +184,6 @@ for stage_name, visible_examples in stages:
     ax.plot(
         t_gupta,
         q_gupta,
-        color="black",
         linewidth=2,
         linestyle="--",
         label=gupta_label,
@@ -140,8 +213,8 @@ for stage_name, visible_examples in stages:
             alpha=0.7,
         )
 
-    if stage_name == "all_cough_models1_gupta_only":
-        _add_stage1_annotations(ax)
+    if stage_name == "all_cough_models2_gupta_annotated":
+        _add_stage2_annotations(ax, t_gupta, q_gupta)
 
     ax.set_ylabel("Flow rate (L/s)")
     ax.set_xlim(0, global_x_max)
@@ -159,7 +232,7 @@ for stage_name, visible_examples in stages:
 
 # Keep legacy filename for convenience (same content as stage 3).
 final_path = out_dir / "all_cough_models.pdf"
-stage3_path = out_dir / "all_cough_models3_plus_feinstein_ross_smith.pdf"
-if stage3_path.exists():
-    final_path.write_bytes(stage3_path.read_bytes())
+stage4_path = out_dir / "all_cough_models4_plus_feinstein_ross_smith.pdf"
+if stage4_path.exists():
+    final_path.write_bytes(stage4_path.read_bytes())
     print(f"Saved: {final_path}")

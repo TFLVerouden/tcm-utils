@@ -34,6 +34,7 @@ def axes_frac_to_data(ax, xy: tuple[float, float]) -> tuple[float, float]:
 def use_tcm_poster_style(
     *,
     dark_mode: bool = False,
+    black_white_first: bool = False,
     cvd_friendly: bool = False,
     cvd_style: Literal["adjusted", "tableau-colorblind10"] = "adjusted",
 ) -> list[str]:
@@ -59,6 +60,9 @@ def use_tcm_poster_style(
         style_paths.append(
             pkg_root.joinpath("styles", "tcm-poster-dark.mplstyle")
         )
+        first_color = '#ffffff' if black_white_first else None
+    else:
+        first_color = '#000000' if black_white_first else None
 
     missing_style_paths = [str(path)
                            for path in style_paths if not path.is_file()]
@@ -126,7 +130,8 @@ def use_tcm_poster_style(
     if cvd_friendly:
         from .cvd_check import set_cvd_friendly_colors
 
-        set_cvd_friendly_colors(style=cvd_style)
+        set_cvd_friendly_colors(
+            style=cvd_style, first_color=first_color)
 
     # Return the current color cycle
     return plt.rcParams.get("axes.prop_cycle").by_key().get("color", None)

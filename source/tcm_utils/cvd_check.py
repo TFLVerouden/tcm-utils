@@ -88,7 +88,8 @@ def simulate_cvd_on_file(file_path, deficiency="PROTAN", severity=0.6,
     simulated_image = Image.fromarray(np.uint8(simulated_array))
 
     # Ensure the output directory exists
-    target_dir = Path(output_dir).expanduser() if output_dir else image_path.parent
+    target_dir = Path(output_dir).expanduser(
+    ) if output_dir else image_path.parent
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the image with "_cvd" suffix
@@ -100,7 +101,7 @@ def simulate_cvd_on_file(file_path, deficiency="PROTAN", severity=0.6,
     return str(target_path)
 
 
-def set_cvd_friendly_colors(style="adjusted", do_reset=False, do_print=False):
+def set_cvd_friendly_colors(style="adjusted", first_color=None, do_reset=False, do_print=False):
     """
     Sets the Matplotlib color cycle and colormap for color vision deficiency
     (CVD) friendliness. Can reset to default settings or use the
@@ -108,6 +109,7 @@ def set_cvd_friendly_colors(style="adjusted", do_reset=False, do_print=False):
 
     :param style: Style to use ('adjusted' or 'tableau-colorblind10').
         Default is 'adjusted'.
+    :param first_color: Color to use as the first color in the cycle.
     :param do_reset: If True, resets the settings to the default.
     :param do_print: If True, prints the current color cycle and colormap.
     """
@@ -133,6 +135,10 @@ def set_cvd_friendly_colors(style="adjusted", do_reset=False, do_print=False):
             adjusted_colors = [color for color in default_colors
                                if color not in skip_colors]
 
+            # Prepend the specified first color as the first color in the cycle
+            if first_color is not None:
+                adjusted_colors.insert(0, first_color)
+
             # Add grey to the end of the list
             grey_color = '#7f7f7f'  # Grey
             adjusted_colors.remove(grey_color)
@@ -152,13 +158,13 @@ def set_cvd_friendly_colors(style="adjusted", do_reset=False, do_print=False):
         print("Current colormap:", current_cmap)
 
     # Return color cycle
-    return(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+    return (plt.rcParams['axes.prop_cycle'].by_key()['color'])
 
 
 def get_color(n):
     """
     Returns the nth color from the current Matplotlib color cycle.
-    
+
     :param n: Index of the color to retrieve (0-indexed).
     :return: Color string (hex format) from the current color cycle.
     """

@@ -35,7 +35,7 @@ def use_tcm_poster_style(
     *,
     dark_mode: bool = False,
     black_white_first: bool = False,
-    cvd_friendly: bool = False,
+    cvd_friendly: bool = True,
     cvd_style: Literal["adjusted", "tableau-colorblind10"] = "adjusted",
 ) -> list[str]:
     """Activate the bundled Matplotlib poster style.
@@ -63,7 +63,6 @@ def use_tcm_poster_style(
         first_color = '#ffffff' if black_white_first else None
     else:
         first_color = '#000000' if black_white_first else None
-
     missing_style_paths = [str(path)
                            for path in style_paths if not path.is_file()]
     if missing_style_paths:

@@ -418,6 +418,51 @@ def raise_axis_frame(ax, *, zorder: float = 20) -> None:
         gl.set_zorder(0)
 
 
+def reorder_legend(
+    ax,
+    order: list[int] | list[str],
+    **legend_kwargs,
+) -> None:
+    """Reorder legend entries without changing the plotted artists.
+
+    Args:
+        ax:
+            The axes whose legend to reorder.
+        order:
+            Either a list of integer indices into the current legend order,
+            or a list of label strings specifying the desired order.
+            Unlisted entries are appended at the end in their original
+            relative order.
+        **legend_kwargs:
+            Forwarded verbatim to ``ax.legend()``.
+    """
+    legend = ax.get_legend()
+    if legend is not None:
+        handles = legend.legend_handles
+        labels = [t.get_text() for t in legend.get_texts()]
+    else:
+        handles, labels = ax.get_legend_handles_labels()
+    n = len(handles)
+    if not handles:
+        return
+
+    if order and isinstance(order[0], str):
+        label_to_idx = {lbl: i for i, lbl in enumerate(labels)}
+        idx_order = [label_to_idx[o] for o in order if o in label_to_idx]
+    else:
+        idx_order = [int(i) for i in order if 0 <= int(i) < n]
+
+    # Append unlisted entries at the end (original relative order preserved).
+    listed = set(idx_order)
+    idx_order += [i for i in range(n) if i not in listed]
+
+    ax.legend(
+        [handles[i] for i in idx_order],
+        [labels[i] for i in idx_order],
+        **legend_kwargs,
+    )
+
+
 def plot_binned_area(
     ax,
     x,

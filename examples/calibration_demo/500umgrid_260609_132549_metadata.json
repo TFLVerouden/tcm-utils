@@ -1,0 +1,33 @@
+{
+  "timestamp": "260609_132549",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "260609_133540",
+  "input_file_original": "C:\\Users\\local2\\Desktop\\NNCode\\500umgrid.png",
+  "raw_data_path": "examples\\calibration_demo\\raw_data\\500umgrid.png",
+  "output_files": {
+    "plot_pdf": "examples\\calibration_demo\\500umgrid_260609_132549_calibration_plot.pdf",
+    "calibration_csv": "examples\\calibration_demo\\500umgrid_260609_132549_calibration.csv"
+  },
+  "calibration": {
+    "rows": 6,
+    "cols": 6,
+    "roi": {
+      "x": 405,
+      "y": 605,
+      "width": 141,
+      "height": 144
+    },
+    "spacing_px": 24.317244211030328,
+    "scale_mm_per_px": 0.020561540430358446,
+    "scale_m_per_px": 2.0561540430358446e-05,
+    "distance_mm_input": 0.5,
+    "image_size_px": {
+      "width": 1280,
+      "height": 1024
+    },
+    "image_size_m": {
+      "width": 0.02631877175085881,
+      "height": 0.02105501740068705
+    }
+  }
+}

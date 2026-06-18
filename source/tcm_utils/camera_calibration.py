@@ -217,7 +217,7 @@ def run_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
-) -> int:
+) -> float:
     repo_root = find_repo_root(Path(__file__))
     default_output = repo_root / "examples" / "calibration_demo"
     # TODO: Ask user for directory if not provided in function arguments

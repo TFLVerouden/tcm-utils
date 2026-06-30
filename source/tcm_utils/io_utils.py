@@ -19,21 +19,23 @@ from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
 def make_minimal_progress_bar(
     *,
-    total: int,
+    total: int | float,
     label: str,
     unit_label: str,
     bar_width: int = 16,
+    postfix_width: int = 0,
     leave: bool = True,
 ) -> tqdm:
     """Create a minimal tqdm bar with constant bar width across labels."""
-    count_width = max(1, len(str(total)))
+    count_width = max(1, len(str(int(math.ceil(total)))))
     bar_format = (
         f"{label}: {{bar}}| "
         f"{{n:>{count_width}.0f}}/{{total:.0f}} {unit_label}"
+        f" {{postfix}}"
     )
 
     fixed_tail = f"| {0:>{count_width}d}/{total} {unit_label}"
-    ncols = len(f"{label}: ") + bar_width + len(fixed_tail)
+    ncols = len(f"{label}: ") + bar_width + len(fixed_tail) + postfix_width
 
     return tqdm(
         total=total,

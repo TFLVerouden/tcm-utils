@@ -141,7 +141,8 @@ def set_cvd_friendly_colors(style="adjusted", first_color=None, do_reset=False, 
 
             # Add grey to the end of the list
             grey_color = '#7f7f7f'  # Grey
-            adjusted_colors.remove(grey_color)
+            if grey_color in adjusted_colors:
+                adjusted_colors.remove(grey_color)
             adjusted_colors.append(grey_color)
 
             # Update Matplotlib's color cycle

@@ -153,13 +153,71 @@ def _rotate_points(pts: np.ndarray, angle_rad: float) -> np.ndarray:
 
 
 def _estimate_grid_angle(centers: np.ndarray) -> float:
-    """Estimate dominant grid axis angle using PCA."""
-    if len(centers) < 2:
+    """Estimate grid axis angle from local neighbor-vector orientations.
+
+    Uses vectors to nearby neighbors, keeps near-first-neighbor distances,
+    folds angles modulo 90 degrees, and selects the dominant orientation bin.
+    """
+    n_pts = len(centers)
+    if n_pts < 2:
         return 0.0
-    centered = centers - np.mean(centers, axis=0, keepdims=True)
-    _, _, vh = np.linalg.svd(centered, full_matrices=False)
-    axis = vh[0]
-    return float(np.arctan2(axis[1], axis[0]))
+
+    k = min(8, n_pts - 1)
+    if k <= 0:
+        return 0.0
+
+    vectors: list[np.ndarray] = []
+    nearest_dists: list[float] = []
+
+    for i in range(n_pts):
+        delta = centers - centers[i]
+        d = np.linalg.norm(delta, axis=1)
+        d[i] = np.inf
+
+        nn_idx = np.argpartition(d, k)[:k]
+        nn_d = d[nn_idx]
+        if len(nn_d) == 0:
+            continue
+        nearest_dists.append(float(np.min(nn_d)))
+
+        for j in nn_idx:
+            if np.isfinite(d[j]) and d[j] > 0:
+                vectors.append(delta[j])
+
+    if not vectors or not nearest_dists:
+        return 0.0
+
+    nn_med = float(np.median(nearest_dists))
+    if nn_med <= 0:
+        return 0.0
+
+    vec_arr = np.array(vectors, dtype=np.float64)
+    vec_dist = np.linalg.norm(vec_arr, axis=1)
+
+    # Keep vectors near one lattice step to suppress diagonal and long-range pairs.
+    keep = (vec_dist >= 0.5 * nn_med) & (vec_dist <= 1.35 * nn_med)
+    if not np.any(keep):
+        return 0.0
+
+    angles = np.arctan2(vec_arr[keep, 1], vec_arr[keep, 0])
+    # Fold to the 90-degree periodic orientation range.
+    folded = ((angles + np.pi / 4.0) % (np.pi / 2.0)) - np.pi / 4.0
+
+    n_bins = 180
+    hist, edges = np.histogram(
+        folded,
+        bins=n_bins,
+        range=(-np.pi / 4.0, np.pi / 4.0),
+    )
+    i_peak = int(np.argmax(hist))
+    bin_width = edges[1] - edges[0]
+    center = 0.5 * (edges[i_peak] + edges[i_peak + 1])
+
+    # Refine around the peak with a robust median.
+    peak_mask = np.abs(folded - center) <= 2.0 * bin_width
+    if np.any(peak_mask):
+        return float(np.median(folded[peak_mask]))
+    return float(center)
 
 
 def _estimate_axis_spacings(rot_centers: np.ndarray, k_neighbors: int = 6) -> Tuple[float, float]:
@@ -607,8 +665,4 @@ def ensure_calibration(
 
 
 if __name__ == "__main__":
-    run_calibration(input_path=Path("/Volumes/Data/Droplet atomisation/260416_varying_yz_water/determine droplet diameter/raw/260401/calibration_C001H001S0001_16bit.tif"),
-                    output_dir=Path(
-                        '/Volumes/Data/Droplet atomisation/260416_varying_yz_water/determine droplet diameter/raw/260401/calibration'),
-                    roi=(531, 232, 264, 154), distance_mm=1.0, adaptive=True)
-    # run_calibration()
+    run_calibration()

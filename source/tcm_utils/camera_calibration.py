@@ -7,7 +7,7 @@ import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 
-from tcm_utils.file_dialogs import ask_open_file, find_repo_root
+from tcm_utils.file_dialogs import ask_open_file, ask_directory, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
     load_image,
@@ -235,7 +235,7 @@ def run_calibration(
                 ("Image files", "*.tif *.tiff *.png *.jpg *.jpeg"),
                 ("All files", "*.*"),
             ],
-            default_dir=output_folder,
+            default_dir=repo_root,
             start=Path(__file__),
         )
 
@@ -341,6 +341,22 @@ def run_calibration(
     else:
         timestamp = timestamp_str()
         timestamp_source_description = "current_time"
+
+    if output_dir is not None:
+        output_folder = Path(output_dir).expanduser().resolve()
+    else:
+        selected_output_dir = ask_directory(
+            key="camera_calibration_output",
+            title="Select output directory for calibration results",
+            default_dir=data_file.parent,
+            start=Path(__file__),
+        )
+        if selected_output_dir is None:
+            print("Calibration cancelled: no output directory selected.")
+            return 1
+        output_folder = selected_output_dir
+
+    output_folder.mkdir(parents=True, exist_ok=True)
 
     # Outputs
     output_plot = output_folder / create_timestamped_filename(

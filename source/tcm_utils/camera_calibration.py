@@ -7,10 +7,10 @@ import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 
-from tcm_utils.file_dialogs import ask_open_file, find_repo_root
+from tcm_utils.file_dialogs import ask_open_file, ask_directory, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
-    load_image,
+    load_image_with_path,
     path_relative_to,
     save_metadata_json,
     copy_file_to_raw_subfolder,
@@ -145,67 +145,242 @@ def _select_roi_colored(img_gray: np.ndarray, color=(255, 0, 255)) -> tuple[int,
     return rect
 
 
-def _cluster_rows_by_y(centers: np.ndarray, rows: int) -> np.ndarray:
-    """Assign a row index to each center by y-clustering.
+def _rotate_points(pts: np.ndarray, angle_rad: float) -> np.ndarray:
+    """Rotate Nx2 points by angle around origin."""
+    c, s = np.cos(angle_rad), np.sin(angle_rad)
+    R = np.array([[c, -s], [s, c]], dtype=np.float64)
+    return pts @ R.T
 
-    Uses approximate uniform spacing assumption.
+
+def _estimate_grid_angle(centers: np.ndarray) -> float:
+    """Estimate grid axis angle from local neighbor-vector orientations.
+
+    Uses vectors to nearby neighbors, keeps near-first-neighbor distances,
+    folds angles modulo 90 degrees, and selects the dominant orientation bin.
     """
-    if len(centers) == 0:
-        return np.array([], dtype=int)
+    n_pts = len(centers)
+    if n_pts < 2:
+        return 0.0
 
-    sorted_idx = np.argsort(centers[:, 1])
-    centers_sorted = centers[sorted_idx]
+    k = min(8, n_pts - 1)
+    if k <= 0:
+        return 0.0
 
-    if rows <= 1:
-        labels = np.zeros(len(centers), dtype=int)
-        return labels
+    vectors: list[np.ndarray] = []
+    nearest_dists: list[float] = []
 
-    row_height = (centers_sorted[-1, 1] -
-                  centers_sorted[0, 1]) / max(rows - 1, 1)
-    labels = np.zeros(len(centers), dtype=int)
-    current_row = 0
-    labels[sorted_idx[0]] = current_row
-    for i in range(1, len(centers)):
-        if centers_sorted[i, 1] - centers_sorted[i - 1, 1] > row_height * 0.5:
-            current_row += 1
-        labels[sorted_idx[i]] = min(current_row, rows - 1)
-    return labels
+    for i in range(n_pts):
+        delta = centers - centers[i]
+        d = np.linalg.norm(delta, axis=1)
+        d[i] = np.inf
 
-
-def estimate_spacing(centers: np.ndarray, rows: int, cols: int) -> Tuple[float, float]:
-    """Estimate horizontal and vertical spacing (dx, dy) using medians."""
-    if len(centers) != rows * cols:
-        raise ValueError("Number of centers does not match rows*cols")
-
-    row_labels = _cluster_rows_by_y(centers, rows)
-
-    dx_list: list[float] = []
-    for r in range(rows):
-        row_pts = centers[row_labels == r]
-        if len(row_pts) < 2:
+        nn_idx = np.argpartition(d, k)[:k]
+        nn_d = d[nn_idx]
+        if len(nn_d) == 0:
             continue
-        row_pts_sorted = row_pts[np.argsort(row_pts[:, 0])]
-        dx_row = np.diff(row_pts_sorted[:, 0])
-        dx_list.extend(dx_row.tolist())
-    dx = float(np.median(dx_list)) if dx_list else 0.0
+        nearest_dists.append(float(np.min(nn_d)))
 
-    y_per_row = [np.median(centers[row_labels == r, 1]) for r in range(rows)]
-    dy = float(np.median(np.diff(y_per_row))) if rows > 1 else 0.0
+        for j in nn_idx:
+            if np.isfinite(d[j]) and d[j] > 0:
+                vectors.append(delta[j])
+
+    if not vectors or not nearest_dists:
+        return 0.0
+
+    nn_med = float(np.median(nearest_dists))
+    if nn_med <= 0:
+        return 0.0
+
+    vec_arr = np.array(vectors, dtype=np.float64)
+    vec_dist = np.linalg.norm(vec_arr, axis=1)
+
+    # Keep vectors near one lattice step to suppress diagonal and long-range pairs.
+    keep = (vec_dist >= 0.5 * nn_med) & (vec_dist <= 1.35 * nn_med)
+    if not np.any(keep):
+        return 0.0
+
+    angles = np.arctan2(vec_arr[keep, 1], vec_arr[keep, 0])
+    # Fold to the 90-degree periodic orientation range.
+    folded = ((angles + np.pi / 4.0) % (np.pi / 2.0)) - np.pi / 4.0
+
+    n_bins = 180
+    hist, edges = np.histogram(
+        folded,
+        bins=n_bins,
+        range=(-np.pi / 4.0, np.pi / 4.0),
+    )
+    i_peak = int(np.argmax(hist))
+    bin_width = edges[1] - edges[0]
+    center = 0.5 * (edges[i_peak] + edges[i_peak + 1])
+
+    # Refine around the peak with a robust median.
+    peak_mask = np.abs(folded - center) <= 2.0 * bin_width
+    if np.any(peak_mask):
+        return float(np.median(folded[peak_mask]))
+    return float(center)
+
+
+def _estimate_axis_spacings(rot_centers: np.ndarray, k_neighbors: int = 6) -> Tuple[float, float]:
+    """Estimate lattice spacings (dx, dy) in approximately axis-aligned coordinates."""
+    n_pts = len(rot_centers)
+    if n_pts < 2:
+        return 0.0, 0.0
+
+    k = min(max(k_neighbors, 2), n_pts - 1)
+    dx_candidates: list[float] = []
+    dy_candidates: list[float] = []
+    nn_candidates: list[float] = []
+
+    for i in range(n_pts):
+        delta = rot_centers - rot_centers[i]
+        d = np.linalg.norm(delta, axis=1)
+        d[i] = np.inf
+        nn_idx = np.argpartition(d, k)[:k]
+
+        for j in nn_idx:
+            vx, vy = delta[j]
+            ax, ay = abs(vx), abs(vy)
+            dist = float(np.hypot(vx, vy))
+            if dist <= 0:
+                continue
+            nn_candidates.append(dist)
+            # Keep mostly axis-parallel neighbor vectors.
+            if ax >= 1.5 * ay and ax > 0:
+                dx_candidates.append(ax)
+            elif ay >= 1.5 * ax and ay > 0:
+                dy_candidates.append(ay)
+
+    nn_med = float(np.median(nn_candidates)) if nn_candidates else 0.0
+    dx = float(np.median(dx_candidates)) if dx_candidates else nn_med
+    dy = float(np.median(dy_candidates)) if dy_candidates else nn_med
     return dx, dy
 
 
-def infer_grid_size(n_points: int) -> Tuple[int, int]:
-    """Infer rows and cols from number of points by factor pairs.
+def _quantize_axis_with_phase(coords: np.ndarray, spacing: float) -> Tuple[np.ndarray, float, int]:
+    """Quantize 1D coordinates to lattice indices using an estimated phase.
 
-    Returns (rows, cols) with rows <= cols.
+    Returns:
+        idx_shifted: integer indices shifted to start at 0
+        phase: phase in lattice units (fractional offset)
+        k_min: pre-shift minimum integer lattice index
     """
-    best_r, best_c = 1, n_points
-    for i in range(1, int(np.sqrt(n_points)) + 1):
-        if n_points % i == 0:
-            r, c = i, n_points // i
-            if r <= c:
-                best_r, best_c = r, c
-    return best_r, best_c
+    if spacing <= 0:
+        return np.zeros(len(coords), dtype=int), 0.0, 0
+
+    u = coords / spacing
+
+    # Brute-force phase search in [0, 1) to find the best lattice offset.
+    # This avoids anchoring on edge points, which can be incomplete.
+    phase_grid = np.linspace(0.0, 1.0, 256, endpoint=False)
+    best_phase = 0.0
+    best_cost = np.inf
+    for phase in phase_grid:
+        snapped = np.rint(u - phase) + phase
+        cost = float(np.median(np.abs(u - snapped)))
+        if cost < best_cost:
+            best_cost = cost
+            best_phase = float(phase)
+
+    k = np.rint(u - best_phase).astype(int)
+    k_min = int(np.min(k)) if len(k) else 0
+    return k - k_min, best_phase, k_min
+
+
+def _merge_sparse_edge_bins(indices: np.ndarray, min_ratio: float = 0.6, min_count: int = 3) -> np.ndarray:
+    """Merge sparse edge bins into adjacent bins to avoid spurious outer rows/cols."""
+    if len(indices) == 0:
+        return indices
+
+    idx = indices.astype(int).copy()
+    idx -= int(np.min(idx))
+
+    while True:
+        counts = np.bincount(idx)
+        if len(counts) <= 1:
+            break
+
+        ref = float(np.median(counts[counts > 0])
+                    ) if np.any(counts > 0) else 0.0
+        threshold = max(min_count, int(np.ceil(ref * min_ratio)))
+        changed = False
+
+        # If only the outer edge bin is weak, treat it as clipped and merge inward.
+        if counts[0] < threshold and len(counts) > 1:
+            idx[idx == 0] = 1
+            idx -= 1
+            changed = True
+
+        counts = np.bincount(idx)
+        # Right edge too sparse: merge into neighbor bin.
+        max_bin = len(counts) - 1
+        if max_bin >= 1 and counts[max_bin] < threshold:
+            idx[idx == max_bin] = max_bin - 1
+            changed = True
+
+        if not changed:
+            break
+
+    idx -= int(np.min(idx))
+    return idx
+
+
+def infer_grid_geometry(centers: np.ndarray) -> Tuple[int, int, np.ndarray, np.ndarray, float, float, float, float, float]:
+    """Infer grid geometry from centers, allowing partial rows/cols.
+
+    Pipeline:
+    1) Estimate global grid angle and rotate points to near-axis alignment.
+    2) Estimate dx/dy from mostly axis-parallel neighbor vectors.
+    3) Quantize rotated coordinates with a learned lattice phase.
+    4) Merge sparse edge bins to avoid overcounting clipped border rows/cols.
+
+    Returns:
+        rows, cols, row_indices, col_indices, theta, dx, dy, x0_rot, y0_rot
+    """
+    if len(centers) == 0:
+        raise ValueError("No centers available for grid inference")
+
+    theta = _estimate_grid_angle(centers)
+    rot = _rotate_points(centers, -theta)
+    dx, dy = _estimate_axis_spacings(rot)
+
+    # Fallback spacing based on nearest-neighbor distances.
+    if dx <= 0 or dy <= 0:
+        n_pts = len(rot)
+        nn = []
+        for i in range(n_pts):
+            d = np.linalg.norm(rot - rot[i], axis=1)
+            d[i] = np.inf
+            nn.append(float(np.min(d)))
+        nn_med = float(np.median(nn)) if nn else 1.0
+        if dx <= 0:
+            dx = nn_med
+        if dy <= 0:
+            dy = nn_med
+
+    # Quantize onto integer lattice coordinates with phase compensation.
+    col_indices, x_phase, x_k_min = _quantize_axis_with_phase(rot[:, 0], dx)
+    row_indices, y_phase, y_k_min = _quantize_axis_with_phase(rot[:, 1], dy)
+
+    # Remove edge-only bins caused by cropped top/bottom/left/right rows.
+    col_indices = _merge_sparse_edge_bins(col_indices)
+    row_indices = _merge_sparse_edge_bins(row_indices)
+
+    rows = int(np.max(row_indices)) + 1
+    cols = int(np.max(col_indices)) + 1
+
+    # Keep reporting format consistent with rows <= cols.
+    if rows > cols:
+        row_indices, col_indices = col_indices.copy(), row_indices.copy()
+        rows, cols = cols, rows
+        dx, dy = dy, dx
+        theta += np.pi / 2.0
+        x0_rot = float((y_k_min + y_phase) * dy)
+        y0_rot = float((x_k_min + x_phase) * dx)
+    else:
+        x0_rot = float((x_k_min + x_phase) * dx)
+        y0_rot = float((y_k_min + y_phase) * dy)
+
+    return rows, cols, row_indices, col_indices, theta, dx, dy, x0_rot, y0_rot
 
 
 def run_calibration(
@@ -217,12 +392,9 @@ def run_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
+    roi: tuple[int, int, int, int] | None = None,
 ) -> float:
     repo_root = find_repo_root(Path(__file__))
-    default_output = repo_root / "examples" / "calibration_demo"
-    # TODO: Ask user for directory if not provided in function arguments
-    output_folder = (output_dir or default_output)
-    output_folder.mkdir(parents=True, exist_ok=True)
 
     # Select input image
     if input_path is not None:
@@ -235,7 +407,7 @@ def run_calibration(
                 ("Image files", "*.tif *.tiff *.png *.jpg *.jpeg"),
                 ("All files", "*.*"),
             ],
-            default_dir=output_folder,
+            default_dir=repo_root,
             start=Path(__file__),
         )
 
@@ -247,17 +419,30 @@ def run_calibration(
     if not data_file.exists():
         raise FileNotFoundError(f"Input file not found: {data_file}")
 
-    # Load image
-    img = load_image(data_file)
+    # Load image (may use converted TIFF path)
+    img, loaded_image_path = load_image_with_path(data_file)
     img_h, img_w = img.shape[:2]
 
     # ROI selection
-    print("Please select the ROI containing the calibration circle grid")
-    r = _select_roi_colored(img)
-    if r == (0, 0, 0, 0):
-        print("ROI selection cancelled.")
-        return 1
-    x, y, w, h = map(int, r)
+    if roi is None:
+        print("Please select the ROI containing the calibration circle grid (press ESC to cancel)")
+        r = _select_roi_colored(img)
+        if r == (0, 0, 0, 0):
+            print("ROI selection cancelled.")
+            return 1
+        x, y, w, h = map(int, r)
+    else:
+        if len(roi) != 4:
+            raise ValueError("roi must be a 4-tuple: (x, y, width, height)")
+
+        x, y, w, h = map(int, roi)
+        if w <= 0 or h <= 0:
+            raise ValueError("roi width and height must be > 0")
+
+        x = max(0, min(x, img_w - 1))
+        y = max(0, min(y, img_h - 1))
+        w = max(1, min(w, img_w - x))
+        h = max(1, min(h, img_h - y))
 
     roi_img = img[y: y + h, x: x + w]
     centers_roi, binary = detect_circle_centers(
@@ -276,33 +461,27 @@ def run_calibration(
     centers[:, 0] += x
     centers[:, 1] += y
 
-    # Infer grid size automatically
-    rows, cols = infer_grid_size(len(centers))
-    if rows * cols != len(centers):
-        print(
-            f"Warning: detected {len(centers)} centers, but rows*cols={rows*cols}. Proceeding with estimation."
-        )
+    # Infer rotated lattice geometry before row/column clustering.
+    # This keeps indexing stable when the ROI clips partial border rows.
+    rows, cols, row_labels, col_indices, theta, dx, dy, x0_rot, y0_rot = infer_grid_geometry(
+        centers
+    )
+    theta_deg = float(np.rad2deg(theta))
+    # Grid orientation is 90-degree periodic, so report the canonical small tilt.
+    theta_deg = ((theta_deg + 45.0) % 90.0) - 45.0
+    print(
+        f"Detected dot grid size (rotated by {theta_deg:.1f}°): {cols}x{rows}")
 
-    # Estimate spacing
-    try:
-        dx, dy = estimate_spacing(centers, rows, cols)
-    except ValueError:
-        # Fallback: approximate spacing by nearest neighbor median
-        # optional; if missing, fallback below
-        from sklearn.neighbors import NearestNeighbors
-
-        nbrs = NearestNeighbors(n_neighbors=2).fit(centers)
-        distances, _ = nbrs.kneighbors(centers)
-        nn = distances[:, 1]
-        dx = float(np.median(nn))
-        dy = dx
-
-    spacing_px = float(dx) if dx > 0 else float(
-        np.linalg.norm(np.ptp(centers, axis=0))) / max(cols - 1, 1)
+    spacing_candidates = [v for v in (dx, dy) if v > 0]
+    if spacing_candidates:
+        spacing_px = float(np.median(spacing_candidates))
+    else:
+        spacing_px = float(np.linalg.norm(
+            np.ptp(centers, axis=0))) / max(cols - 1, 1)
 
     if distance_mm is None or distance_mm == "" or (isinstance(distance_mm, (int, float)) and distance_mm <= 0):
         spacing_input = prompt_input(
-            "Enter the spacing between dots in millimeters (press Enter to cancel): ",
+            "Enter the spacing between dots in millimeters (leave empty to cancel): ",
             value_type="float",
             allow_empty=True,
             min_value=0.0,
@@ -342,31 +521,35 @@ def run_calibration(
         timestamp = timestamp_str()
         timestamp_source_description = "current_time"
 
+    if output_dir is not None:
+        output_folder = Path(output_dir).expanduser().resolve()
+    else:
+        selected_output_dir = ask_directory(
+            key="camera_calibration_output",
+            title="Select output directory for calibration results",
+            default_dir=data_file.parent,
+            start=Path(__file__),
+        )
+        if selected_output_dir is None:
+            print("Calibration cancelled: no output directory selected.")
+            return 1
+        output_folder = selected_output_dir
+
+    output_folder.mkdir(parents=True, exist_ok=True)
+
     # Outputs
     output_plot = output_folder / create_timestamped_filename(
         base_filename, timestamp, "calibration_plot", "pdf"
     )
     plt.savefig(output_plot)
 
-    # Prepare CSV with centers and simple fit residuals
-    # Map centers to row/col indices
-    row_labels = _cluster_rows_by_y(centers, rows)
-    # Estimate origin as min per row/col
-    origin_x = float(np.min(centers[:, 0]))
-    origin_y = float(np.min(centers[:, 1]))
-    # For columns per row, sort by x within each row to assign indices
-    col_indices = np.zeros(len(centers), dtype=int)
-    for r in range(rows):
-        idx_r = np.where(row_labels == r)[0]
-        if idx_r.size == 0:
-            continue
-        row_pts = centers[idx_r]
-        order = np.argsort(row_pts[:, 0])
-        col_indices[idx_r[order]] = np.arange(len(idx_r))
-
-    predicted_x = origin_x + col_indices * spacing_px
-    # If dy is unreliable for single row, keep row spacing 0
-    predicted_y = origin_y + row_labels * (dy if dy > 0 else 0.0)
+    # Prepare CSV with centers and angle-aware lattice fit residuals.
+    predicted_rot_x = x0_rot + col_indices * dx
+    predicted_rot_y = y0_rot + row_labels * dy
+    predicted_rot = np.column_stack((predicted_rot_x, predicted_rot_y))
+    predicted_xy = _rotate_points(predicted_rot, theta)
+    predicted_x = predicted_xy[:, 0]
+    predicted_y = predicted_xy[:, 1]
     residuals = np.sqrt((centers[:, 0] - predicted_x)
                         ** 2 + (centers[:, 1] - predicted_y) ** 2)
 
@@ -381,8 +564,8 @@ def run_calibration(
     np.savetxt(output_csv, csv_data, delimiter=",",
                header=csv_header, comments="")
 
-    # Copy raw file to raw_data subfolder
-    moved_raw = copy_file_to_raw_subfolder(data_file, output_folder)
+    # Copy the actual loaded input file to raw_data (converted TIFF when used)
+    moved_raw = copy_file_to_raw_subfolder(loaded_image_path, output_folder)
 
     # Metadata JSON
     metadata = {
@@ -390,6 +573,7 @@ def run_calibration(
         "timestamp_source": timestamp_source_description,
         "analysis_run_time": timestamp_str(),
         "input_file_original": path_relative_to(Path(data_file), repo_root),
+        "input_file_used": path_relative_to(Path(loaded_image_path), repo_root),
         "raw_data_path": path_relative_to(moved_raw, repo_root),
         "output_files": {
             "plot_pdf": path_relative_to(output_plot, repo_root),
@@ -398,6 +582,7 @@ def run_calibration(
         "calibration": {
             "rows": int(rows),
             "cols": int(cols),
+            "grid_rotation_deg": float(theta_deg),
             "roi": {"x": x, "y": y, "width": w, "height": h},
             "spacing_px": float(spacing_px),
             "scale_mm_per_px": float(mm_per_px),
@@ -414,9 +599,9 @@ def run_calibration(
     )
     save_metadata_json(metadata, metadata_path)
 
-    print(f"Plot written to {output_plot}")
-    print(f"CSV written to {output_csv}")
-    print(f"Metadata written to {metadata_path}")
+    print(f"- Plot written to {output_plot}")
+    print(f"- CSV written to {output_csv}")
+    print(f"- Metadata written to {metadata_path}")
     print(
         f"Estimated scale: {mm_per_px:.6f} mm/px (spacing {spacing_px:.3f} px)")
     return mm_per_px
@@ -447,7 +632,7 @@ def ensure_calibration(
     repo_root = find_repo_root(Path(__file__))
     default_output = repo_root / "examples" / "calibration_demo"
 
-    def _runner(image_path: Path, dest: Path) -> int:
+    def _runner(image_path: Path, dest: Path) -> float:
         return run_calibration(
             input_path=image_path,
             distance_mm=distance_mm,

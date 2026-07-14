@@ -217,6 +217,7 @@ def run_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
+    roi: tuple[int, int, int, int] | None = None,
 ) -> float:
     repo_root = find_repo_root(Path(__file__))
 
@@ -248,12 +249,25 @@ def run_calibration(
     img_h, img_w = img.shape[:2]
 
     # ROI selection
-    print("Please select the ROI containing the calibration circle grid (press ESC to cancel)")
-    r = _select_roi_colored(img)
-    if r == (0, 0, 0, 0):
-        print("ROI selection cancelled.")
-        return 1
-    x, y, w, h = map(int, r)
+    if roi is None:
+        print("Please select the ROI containing the calibration circle grid (press ESC to cancel)")
+        r = _select_roi_colored(img)
+        if r == (0, 0, 0, 0):
+            print("ROI selection cancelled.")
+            return 1
+        x, y, w, h = map(int, r)
+    else:
+        if len(roi) != 4:
+            raise ValueError("roi must be a 4-tuple: (x, y, width, height)")
+
+        x, y, w, h = map(int, roi)
+        if w <= 0 or h <= 0:
+            raise ValueError("roi width and height must be > 0")
+
+        x = max(0, min(x, img_w - 1))
+        y = max(0, min(y, img_h - 1))
+        w = max(1, min(w, img_w - x))
+        h = max(1, min(h, img_h - y))
 
     roi_img = img[y: y + h, x: x + w]
     centers_roi, binary = detect_circle_centers(
@@ -494,4 +508,7 @@ def ensure_calibration(
 
 
 if __name__ == "__main__":
-    run_calibration()
+    run_calibration(input_path=Path("/Volumes/Data/Droplet atomisation/260416_varying_yz_water/determine droplet diameter/raw/260401/calibration_C001H001S0001_16bit.tif"),
+                    output_dir=Path(
+                        '/Volumes/Data/Droplet atomisation/260416_varying_yz_water/determine droplet diameter/raw/260401/calibration'),
+                    roi=(531, 232, 264, 154), distance_mm=1.0, adaptive=True)

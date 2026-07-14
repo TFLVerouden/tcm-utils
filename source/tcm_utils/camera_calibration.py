@@ -145,67 +145,184 @@ def _select_roi_colored(img_gray: np.ndarray, color=(255, 0, 255)) -> tuple[int,
     return rect
 
 
-def _cluster_rows_by_y(centers: np.ndarray, rows: int) -> np.ndarray:
-    """Assign a row index to each center by y-clustering.
-
-    Uses approximate uniform spacing assumption.
-    """
-    if len(centers) == 0:
-        return np.array([], dtype=int)
-
-    sorted_idx = np.argsort(centers[:, 1])
-    centers_sorted = centers[sorted_idx]
-
-    if rows <= 1:
-        labels = np.zeros(len(centers), dtype=int)
-        return labels
-
-    row_height = (centers_sorted[-1, 1] -
-                  centers_sorted[0, 1]) / max(rows - 1, 1)
-    labels = np.zeros(len(centers), dtype=int)
-    current_row = 0
-    labels[sorted_idx[0]] = current_row
-    for i in range(1, len(centers)):
-        if centers_sorted[i, 1] - centers_sorted[i - 1, 1] > row_height * 0.5:
-            current_row += 1
-        labels[sorted_idx[i]] = min(current_row, rows - 1)
-    return labels
+def _rotate_points(pts: np.ndarray, angle_rad: float) -> np.ndarray:
+    """Rotate Nx2 points by angle around origin."""
+    c, s = np.cos(angle_rad), np.sin(angle_rad)
+    R = np.array([[c, -s], [s, c]], dtype=np.float64)
+    return pts @ R.T
 
 
-def estimate_spacing(centers: np.ndarray, rows: int, cols: int) -> Tuple[float, float]:
-    """Estimate horizontal and vertical spacing (dx, dy) using medians."""
-    if len(centers) != rows * cols:
-        raise ValueError("Number of centers does not match rows*cols")
+def _estimate_grid_angle(centers: np.ndarray) -> float:
+    """Estimate dominant grid axis angle using PCA."""
+    if len(centers) < 2:
+        return 0.0
+    centered = centers - np.mean(centers, axis=0, keepdims=True)
+    _, _, vh = np.linalg.svd(centered, full_matrices=False)
+    axis = vh[0]
+    return float(np.arctan2(axis[1], axis[0]))
 
-    row_labels = _cluster_rows_by_y(centers, rows)
 
-    dx_list: list[float] = []
-    for r in range(rows):
-        row_pts = centers[row_labels == r]
-        if len(row_pts) < 2:
-            continue
-        row_pts_sorted = row_pts[np.argsort(row_pts[:, 0])]
-        dx_row = np.diff(row_pts_sorted[:, 0])
-        dx_list.extend(dx_row.tolist())
-    dx = float(np.median(dx_list)) if dx_list else 0.0
+def _estimate_axis_spacings(rot_centers: np.ndarray, k_neighbors: int = 6) -> Tuple[float, float]:
+    """Estimate lattice spacings (dx, dy) in approximately axis-aligned coordinates."""
+    n_pts = len(rot_centers)
+    if n_pts < 2:
+        return 0.0, 0.0
 
-    y_per_row = [np.median(centers[row_labels == r, 1]) for r in range(rows)]
-    dy = float(np.median(np.diff(y_per_row))) if rows > 1 else 0.0
+    k = min(max(k_neighbors, 2), n_pts - 1)
+    dx_candidates: list[float] = []
+    dy_candidates: list[float] = []
+    nn_candidates: list[float] = []
+
+    for i in range(n_pts):
+        delta = rot_centers - rot_centers[i]
+        d = np.linalg.norm(delta, axis=1)
+        d[i] = np.inf
+        nn_idx = np.argpartition(d, k)[:k]
+
+        for j in nn_idx:
+            vx, vy = delta[j]
+            ax, ay = abs(vx), abs(vy)
+            dist = float(np.hypot(vx, vy))
+            if dist <= 0:
+                continue
+            nn_candidates.append(dist)
+            # Keep mostly axis-parallel neighbor vectors.
+            if ax >= 1.5 * ay and ax > 0:
+                dx_candidates.append(ax)
+            elif ay >= 1.5 * ax and ay > 0:
+                dy_candidates.append(ay)
+
+    nn_med = float(np.median(nn_candidates)) if nn_candidates else 0.0
+    dx = float(np.median(dx_candidates)) if dx_candidates else nn_med
+    dy = float(np.median(dy_candidates)) if dy_candidates else nn_med
     return dx, dy
 
 
-def infer_grid_size(n_points: int) -> Tuple[int, int]:
-    """Infer rows and cols from number of points by factor pairs.
+def _quantize_axis_with_phase(coords: np.ndarray, spacing: float) -> Tuple[np.ndarray, float, int]:
+    """Quantize 1D coordinates to lattice indices using an estimated phase.
 
-    Returns (rows, cols) with rows <= cols.
+    Returns:
+        idx_shifted: integer indices shifted to start at 0
+        phase: phase in lattice units (fractional offset)
+        k_min: pre-shift minimum integer lattice index
     """
-    best_r, best_c = 1, n_points
-    for i in range(1, int(np.sqrt(n_points)) + 1):
-        if n_points % i == 0:
-            r, c = i, n_points // i
-            if r <= c:
-                best_r, best_c = r, c
-    return best_r, best_c
+    if spacing <= 0:
+        return np.zeros(len(coords), dtype=int), 0.0, 0
+
+    u = coords / spacing
+
+    # Brute-force phase search in [0, 1) to find the best lattice offset.
+    # This avoids anchoring on edge points, which can be incomplete.
+    phase_grid = np.linspace(0.0, 1.0, 256, endpoint=False)
+    best_phase = 0.0
+    best_cost = np.inf
+    for phase in phase_grid:
+        snapped = np.rint(u - phase) + phase
+        cost = float(np.median(np.abs(u - snapped)))
+        if cost < best_cost:
+            best_cost = cost
+            best_phase = float(phase)
+
+    k = np.rint(u - best_phase).astype(int)
+    k_min = int(np.min(k)) if len(k) else 0
+    return k - k_min, best_phase, k_min
+
+
+def _merge_sparse_edge_bins(indices: np.ndarray, min_ratio: float = 0.6, min_count: int = 3) -> np.ndarray:
+    """Merge sparse edge bins into adjacent bins to avoid spurious outer rows/cols."""
+    if len(indices) == 0:
+        return indices
+
+    idx = indices.astype(int).copy()
+    idx -= int(np.min(idx))
+
+    while True:
+        counts = np.bincount(idx)
+        if len(counts) <= 1:
+            break
+
+        ref = float(np.median(counts[counts > 0])
+                    ) if np.any(counts > 0) else 0.0
+        threshold = max(min_count, int(np.ceil(ref * min_ratio)))
+        changed = False
+
+        # If only the outer edge bin is weak, treat it as clipped and merge inward.
+        if counts[0] < threshold and len(counts) > 1:
+            idx[idx == 0] = 1
+            idx -= 1
+            changed = True
+
+        counts = np.bincount(idx)
+        # Right edge too sparse: merge into neighbor bin.
+        max_bin = len(counts) - 1
+        if max_bin >= 1 and counts[max_bin] < threshold:
+            idx[idx == max_bin] = max_bin - 1
+            changed = True
+
+        if not changed:
+            break
+
+    idx -= int(np.min(idx))
+    return idx
+
+
+def infer_grid_geometry(centers: np.ndarray) -> Tuple[int, int, np.ndarray, np.ndarray, float, float, float, float, float]:
+    """Infer grid geometry from centers, allowing partial rows/cols.
+
+    Pipeline:
+    1) Estimate global grid angle and rotate points to near-axis alignment.
+    2) Estimate dx/dy from mostly axis-parallel neighbor vectors.
+    3) Quantize rotated coordinates with a learned lattice phase.
+    4) Merge sparse edge bins to avoid overcounting clipped border rows/cols.
+
+    Returns:
+        rows, cols, row_indices, col_indices, theta, dx, dy, x0_rot, y0_rot
+    """
+    if len(centers) == 0:
+        raise ValueError("No centers available for grid inference")
+
+    theta = _estimate_grid_angle(centers)
+    rot = _rotate_points(centers, -theta)
+    dx, dy = _estimate_axis_spacings(rot)
+
+    # Fallback spacing based on nearest-neighbor distances.
+    if dx <= 0 or dy <= 0:
+        n_pts = len(rot)
+        nn = []
+        for i in range(n_pts):
+            d = np.linalg.norm(rot - rot[i], axis=1)
+            d[i] = np.inf
+            nn.append(float(np.min(d)))
+        nn_med = float(np.median(nn)) if nn else 1.0
+        if dx <= 0:
+            dx = nn_med
+        if dy <= 0:
+            dy = nn_med
+
+    # Quantize onto integer lattice coordinates with phase compensation.
+    col_indices, x_phase, x_k_min = _quantize_axis_with_phase(rot[:, 0], dx)
+    row_indices, y_phase, y_k_min = _quantize_axis_with_phase(rot[:, 1], dy)
+
+    # Remove edge-only bins caused by cropped top/bottom/left/right rows.
+    col_indices = _merge_sparse_edge_bins(col_indices)
+    row_indices = _merge_sparse_edge_bins(row_indices)
+
+    rows = int(np.max(row_indices)) + 1
+    cols = int(np.max(col_indices)) + 1
+
+    # Keep reporting format consistent with rows <= cols.
+    if rows > cols:
+        row_indices, col_indices = col_indices.copy(), row_indices.copy()
+        rows, cols = cols, rows
+        dx, dy = dy, dx
+        theta += np.pi / 2.0
+        x0_rot = float((y_k_min + y_phase) * dy)
+        y0_rot = float((x_k_min + x_phase) * dx)
+    else:
+        x0_rot = float((x_k_min + x_phase) * dx)
+        y0_rot = float((y_k_min + y_phase) * dy)
+
+    return rows, cols, row_indices, col_indices, theta, dx, dy, x0_rot, y0_rot
 
 
 def run_calibration(
@@ -286,30 +403,23 @@ def run_calibration(
     centers[:, 0] += x
     centers[:, 1] += y
 
-    # Infer grid size automatically
-    rows, cols = infer_grid_size(len(centers))
-    print(f"Detected dot grid size: {cols}x{rows}")
-    if rows * cols != len(centers):
-        print(
-            f"Warning: detected {len(centers)} centers, but rows*cols={rows*cols}. Proceeding with estimation."
-        )
+    # Infer rotated lattice geometry before row/column clustering.
+    # This keeps indexing stable when the ROI clips partial border rows.
+    rows, cols, row_labels, col_indices, theta, dx, dy, x0_rot, y0_rot = infer_grid_geometry(
+        centers
+    )
+    theta_deg = float(np.rad2deg(theta))
+    # Grid orientation is 90-degree periodic, so report the canonical small tilt.
+    theta_deg = ((theta_deg + 45.0) % 90.0) - 45.0
+    print(
+        f"Detected dot grid size (rotated by {theta_deg:.1f}°): {cols}x{rows}")
 
-    # Estimate spacing
-    try:
-        dx, dy = estimate_spacing(centers, rows, cols)
-    except ValueError:
-        # Fallback: approximate spacing by nearest neighbor median
-        # optional; if missing, fallback below
-        from sklearn.neighbors import NearestNeighbors
-
-        nbrs = NearestNeighbors(n_neighbors=2).fit(centers)
-        distances, _ = nbrs.kneighbors(centers)
-        nn = distances[:, 1]
-        dx = float(np.median(nn))
-        dy = dx
-
-    spacing_px = float(dx) if dx > 0 else float(
-        np.linalg.norm(np.ptp(centers, axis=0))) / max(cols - 1, 1)
+    spacing_candidates = [v for v in (dx, dy) if v > 0]
+    if spacing_candidates:
+        spacing_px = float(np.median(spacing_candidates))
+    else:
+        spacing_px = float(np.linalg.norm(
+            np.ptp(centers, axis=0))) / max(cols - 1, 1)
 
     if distance_mm is None or distance_mm == "" or (isinstance(distance_mm, (int, float)) and distance_mm <= 0):
         spacing_input = prompt_input(
@@ -375,25 +485,13 @@ def run_calibration(
     )
     plt.savefig(output_plot)
 
-    # Prepare CSV with centers and simple fit residuals
-    # Map centers to row/col indices
-    row_labels = _cluster_rows_by_y(centers, rows)
-    # Estimate origin as min per row/col
-    origin_x = float(np.min(centers[:, 0]))
-    origin_y = float(np.min(centers[:, 1]))
-    # For columns per row, sort by x within each row to assign indices
-    col_indices = np.zeros(len(centers), dtype=int)
-    for r in range(rows):
-        idx_r = np.where(row_labels == r)[0]
-        if idx_r.size == 0:
-            continue
-        row_pts = centers[idx_r]
-        order = np.argsort(row_pts[:, 0])
-        col_indices[idx_r[order]] = np.arange(len(idx_r))
-
-    predicted_x = origin_x + col_indices * spacing_px
-    # If dy is unreliable for single row, keep row spacing 0
-    predicted_y = origin_y + row_labels * (dy if dy > 0 else 0.0)
+    # Prepare CSV with centers and angle-aware lattice fit residuals.
+    predicted_rot_x = x0_rot + col_indices * dx
+    predicted_rot_y = y0_rot + row_labels * dy
+    predicted_rot = np.column_stack((predicted_rot_x, predicted_rot_y))
+    predicted_xy = _rotate_points(predicted_rot, theta)
+    predicted_x = predicted_xy[:, 0]
+    predicted_y = predicted_xy[:, 1]
     residuals = np.sqrt((centers[:, 0] - predicted_x)
                         ** 2 + (centers[:, 1] - predicted_y) ** 2)
 
@@ -426,6 +524,7 @@ def run_calibration(
         "calibration": {
             "rows": int(rows),
             "cols": int(cols),
+            "grid_rotation_deg": float(theta_deg),
             "roi": {"x": x, "y": y, "width": w, "height": h},
             "spacing_px": float(spacing_px),
             "scale_mm_per_px": float(mm_per_px),
@@ -512,3 +611,4 @@ if __name__ == "__main__":
                     output_dir=Path(
                         '/Volumes/Data/Droplet atomisation/260416_varying_yz_water/determine droplet diameter/raw/260401/calibration'),
                     roi=(531, 232, 264, 154), distance_mm=1.0, adaptive=True)
+    # run_calibration()

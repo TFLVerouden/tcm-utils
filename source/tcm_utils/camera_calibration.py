@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from tcm_utils.file_dialogs import ask_open_file, ask_directory, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
-    load_image,
+    load_image_with_path,
     path_relative_to,
     save_metadata_json,
     copy_file_to_raw_subfolder,
@@ -247,8 +247,8 @@ def run_calibration(
     if not data_file.exists():
         raise FileNotFoundError(f"Input file not found: {data_file}")
 
-    # Load image
-    img = load_image(data_file)
+    # Load image (may use converted TIFF path)
+    img, loaded_image_path = load_image_with_path(data_file)
     img_h, img_w = img.shape[:2]
 
     # ROI selection
@@ -397,8 +397,8 @@ def run_calibration(
     np.savetxt(output_csv, csv_data, delimiter=",",
                header=csv_header, comments="")
 
-    # Copy raw file to raw_data subfolder
-    moved_raw = copy_file_to_raw_subfolder(data_file, output_folder)
+    # Copy the actual loaded input file to raw_data (converted TIFF when used)
+    moved_raw = copy_file_to_raw_subfolder(loaded_image_path, output_folder)
 
     # Metadata JSON
     metadata = {
@@ -406,6 +406,7 @@ def run_calibration(
         "timestamp_source": timestamp_source_description,
         "analysis_run_time": timestamp_str(),
         "input_file_original": path_relative_to(Path(data_file), repo_root),
+        "input_file_used": path_relative_to(Path(loaded_image_path), repo_root),
         "raw_data_path": path_relative_to(moved_raw, repo_root),
         "output_files": {
             "plot_pdf": path_relative_to(output_plot, repo_root),

@@ -7,6 +7,7 @@ from . import cough_model
 from . import cvd_check
 from . import io_utils
 from . import plot_style
+from . import tif_utils
 from . import time_utils
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "cvd_check",
     "io_utils",
     "plot_style",
+    "tif_utils",
     "time_utils",
 ]

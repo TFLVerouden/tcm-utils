@@ -217,12 +217,8 @@ def run_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
-) -> int:
+) -> float:
     repo_root = find_repo_root(Path(__file__))
-    default_output = repo_root / "examples" / "calibration_demo"
-    # TODO: Ask user for directory if not provided in function arguments
-    output_folder = (output_dir or default_output)
-    output_folder.mkdir(parents=True, exist_ok=True)
 
     # Select input image
     if input_path is not None:
@@ -252,7 +248,7 @@ def run_calibration(
     img_h, img_w = img.shape[:2]
 
     # ROI selection
-    print("Please select the ROI containing the calibration circle grid")
+    print("Please select the ROI containing the calibration circle grid (press ESC to cancel)")
     r = _select_roi_colored(img)
     if r == (0, 0, 0, 0):
         print("ROI selection cancelled.")
@@ -278,6 +274,7 @@ def run_calibration(
 
     # Infer grid size automatically
     rows, cols = infer_grid_size(len(centers))
+    print(f"Detected dot grid size: {cols}x{rows}")
     if rows * cols != len(centers):
         print(
             f"Warning: detected {len(centers)} centers, but rows*cols={rows*cols}. Proceeding with estimation."
@@ -302,7 +299,7 @@ def run_calibration(
 
     if distance_mm is None or distance_mm == "" or (isinstance(distance_mm, (int, float)) and distance_mm <= 0):
         spacing_input = prompt_input(
-            "Enter the spacing between dots in millimeters (press Enter to cancel): ",
+            "Enter the spacing between dots in millimeters (leave empty to cancel): ",
             value_type="float",
             allow_empty=True,
             min_value=0.0,
@@ -431,9 +428,9 @@ def run_calibration(
     )
     save_metadata_json(metadata, metadata_path)
 
-    print(f"Plot written to {output_plot}")
-    print(f"CSV written to {output_csv}")
-    print(f"Metadata written to {metadata_path}")
+    print(f"- Plot written to {output_plot}")
+    print(f"- CSV written to {output_csv}")
+    print(f"- Metadata written to {metadata_path}")
     print(
         f"Estimated scale: {mm_per_px:.6f} mm/px (spacing {spacing_px:.3f} px)")
     return mm_per_px
@@ -464,7 +461,7 @@ def ensure_calibration(
     repo_root = find_repo_root(Path(__file__))
     default_output = repo_root / "examples" / "calibration_demo"
 
-    def _runner(image_path: Path, dest: Path) -> int:
+    def _runner(image_path: Path, dest: Path) -> float:
         return run_calibration(
             input_path=image_path,
             distance_mm=distance_mm,

@@ -17,6 +17,55 @@ from tqdm import tqdm
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
 
+def beep(frequency_Hz: int = 1000, duration_ms: int = 200):
+    """Play a beep sound using the system's default sound player.
+
+    Parameters
+    ----------
+    frequency_Hz : int
+        Frequency of the beep in Hertz (default: 1000).
+    duration_ms : int
+        Duration of the beep in milliseconds (default: 200).
+    """
+    try:
+        import winsound
+        winsound.Beep(frequency_Hz, duration_ms)
+    except ImportError:
+        # For non-Windows systems, use the 'beep' command if available
+        # os.system(f'beep -f {frequency_Hz} -l {duration_ms}')
+        print("\a", end="", flush=True)
+
+
+def countdown_beep(
+    frequency_Hz: int = 1000,
+    duration_ms: int = 400,
+) -> None:
+    """Play a fixed ``3 2 1 BEEP`` countdown with precise 1 s cadence.
+
+    Start times are scheduled exactly 1.0 second apart (1 -> 2 -> 3 -> BEEP).
+    """
+
+    frequency_Hz = max(37, int(frequency_Hz))
+    duration_ms = max(1, int(duration_ms))
+    countdown_frequency_Hz = max(37, frequency_Hz // 2)
+    countdown_duration_ms = max(1, duration_ms // 2)
+
+    start_time = time.perf_counter()
+    for idx, (freq, dur) in enumerate(
+        (
+            (countdown_frequency_Hz, countdown_duration_ms),
+            (countdown_frequency_Hz, countdown_duration_ms),
+            (countdown_frequency_Hz, countdown_duration_ms),
+            (frequency_Hz, duration_ms),
+        )
+    ):
+        target_start = start_time + idx * 1.0
+        sleep_s = target_start - time.perf_counter()
+        if sleep_s > 0:
+            time.sleep(sleep_s)
+        beep(freq, dur)
+
+
 def make_minimal_progress_bar(
     *,
     total: int | float,

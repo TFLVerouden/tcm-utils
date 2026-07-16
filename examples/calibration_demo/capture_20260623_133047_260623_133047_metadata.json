@@ -1,0 +1,33 @@
+{
+  "timestamp": "260623_133047",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "260623_133208",
+  "input_file_original": "C:\\Users\\local2\\Desktop\\NNCode\\capture_20260623_133047.png",
+  "raw_data_path": "examples\\calibration_demo\\raw_data\\capture_20260623_133047.png",
+  "output_files": {
+    "plot_pdf": "examples\\calibration_demo\\capture_20260623_133047_260623_133047_calibration_plot.pdf",
+    "calibration_csv": "examples\\calibration_demo\\capture_20260623_133047_260623_133047_calibration.csv"
+  },
+  "calibration": {
+    "rows": 7,
+    "cols": 11,
+    "roi": {
+      "x": 491,
+      "y": 541,
+      "width": 354,
+      "height": 219
+    },
+    "spacing_px": 31.892591045533777,
+    "scale_mm_per_px": 0.015677622407227393,
+    "scale_m_per_px": 1.5677622407227394e-05,
+    "distance_mm_input": 0.5,
+    "image_size_px": {
+      "width": 1280,
+      "height": 1024
+    },
+    "image_size_m": {
+      "width": 0.020067356681251064,
+      "height": 0.01605388534500085
+    }
+  }
+}

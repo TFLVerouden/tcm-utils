@@ -431,7 +431,7 @@ def ensure_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
-) -> Path | None:
+) -> float | None:
     """Return calibration metadata path or run calibration to create it.
 
     Resolution order (no subfolder scanning):
@@ -447,7 +447,7 @@ def ensure_calibration(
     repo_root = find_repo_root(Path(__file__))
     default_output = repo_root / "examples" / "calibration_demo"
 
-    def _runner(image_path: Path, dest: Path) -> int:
+    def _runner(image_path: Path, dest: Path) -> float:
         return run_calibration(
             input_path=image_path,
             distance_mm=distance_mm,

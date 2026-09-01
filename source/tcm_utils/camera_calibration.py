@@ -276,6 +276,9 @@ def run_calibration(
     img = auto_brightness(img)
     img_h, img_w = img.shape[:2]
 
+    # Print basic info
+    print(f"Loaded image (size {img_w} px x {img_h} px): {data_file}")
+
     # ROI selection
     print("Please select the ROI containing the calibration circle grid")
     r = _select_roi_colored(img)

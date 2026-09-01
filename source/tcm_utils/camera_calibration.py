@@ -20,6 +20,31 @@ from tcm_utils.io_utils import (
 )
 
 
+def auto_brightness(
+    image: np.ndarray,
+    min_contrast: float = 40.0,
+    target_brightness: float = 128.0,
+) -> np.ndarray:
+    """Brighten a low-contrast image while preserving usable images unchanged.
+
+    Contrast is measured as the intensity distance between the 2nd and 98th
+    percentiles, which limits the influence of isolated bright or dark pixels.
+    """
+    if not 0 < min_contrast <= 255:
+        raise ValueError("min_contrast must be in the range (0, 255]")
+    if not 0 <= target_brightness <= 255:
+        raise ValueError("target_brightness must be in the range [0, 255]")
+
+    low, high = np.percentile(image, (2, 98))
+    contrast = float(high - low)
+    if contrast == 0 or contrast >= min_contrast:
+        return image
+
+    scale = min_contrast / contrast
+    offset = target_brightness - scale * float(np.mean(image))
+    return cv.convertScaleAbs(image, alpha=scale, beta=offset)
+
+
 def detect_circle_centers(
     roi_img: np.ndarray,
     min_area: float = 3.0,
@@ -249,6 +274,7 @@ def run_calibration(
 
     # Load image
     img = load_image(data_file)
+    img = auto_brightness(img)
     img_h, img_w = img.shape[:2]
 
     # ROI selection

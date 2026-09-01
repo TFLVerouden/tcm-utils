@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Tuple
 
@@ -7,7 +8,7 @@ import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 
-from tcm_utils.file_dialogs import ask_open_file, find_repo_root
+from tcm_utils.file_dialogs import ask_directory, ask_open_file, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
     load_image,
@@ -244,9 +245,7 @@ def run_calibration(
     output_dir: Path | None = None,
 ) -> float:
     repo_root = find_repo_root(Path(__file__))
-    default_output = repo_root / "examples" / "calibration_demo"
-    # TODO: Ask user for directory if not provided in function arguments
-    output_folder = (output_dir or default_output)
+    output_folder = repo_root / ".temp"
     output_folder.mkdir(parents=True, exist_ok=True)
 
     # Select input image
@@ -438,6 +437,41 @@ def run_calibration(
     metadata_path = output_folder / create_timestamped_filename(
         base_filename, timestamp, "metadata", "json"
     )
+    save_metadata_json(metadata, metadata_path)
+
+    if output_dir is not None:
+        final_output_folder = Path(output_dir).expanduser().resolve()
+    else:
+        final_output_folder = ask_directory(
+            key="camera_calibration_output",
+            title="Select calibration output directory",
+            default_dir=repo_root,
+            start=Path(__file__),
+        )
+        if final_output_folder is None:
+            print(f"Outputs remain in {output_folder}")
+            return mm_per_px
+
+    final_output_folder.mkdir(parents=True, exist_ok=True)
+    final_raw_folder = final_output_folder / "raw_data"
+    final_raw_folder.mkdir(parents=True, exist_ok=True)
+    final_raw_path = final_raw_folder / moved_raw.name
+
+    shutil.move(str(output_plot), final_output_folder / output_plot.name)
+    shutil.move(str(output_csv), final_output_folder / output_csv.name)
+    shutil.move(str(moved_raw), final_raw_path)
+    (output_folder / "raw_data").rmdir()
+    shutil.move(str(metadata_path), final_output_folder / metadata_path.name)
+    output_folder.rmdir()
+
+    output_plot = final_output_folder / output_plot.name
+    output_csv = final_output_folder / output_csv.name
+    metadata_path = final_output_folder / metadata_path.name
+    metadata["raw_data_path"] = path_relative_to(final_raw_path, repo_root)
+    metadata["output_files"] = {
+        "plot_pdf": path_relative_to(output_plot, repo_root),
+        "calibration_csv": path_relative_to(output_csv, repo_root),
+    }
     save_metadata_json(metadata, metadata_path)
 
     print(f"Plot written to {output_plot}")

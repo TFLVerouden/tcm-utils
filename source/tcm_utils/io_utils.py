@@ -481,6 +481,7 @@ def ensure_path(
             return None
         return str(selected)
 
+    assert value is not None
     return str(Path(value).expanduser())
 
 
@@ -620,8 +621,17 @@ def ensure_processed_artifact(
     return _handle_candidate(selection_path)
 
 
-def load_image(path: Path) -> np.ndarray:
-    """Read a single image file using OpenCV."""
+def load_image_with_path(path: Path) -> tuple[np.ndarray, Path]:
+    """Read a single image file and return image plus the file path used.
+
+    For TIFF files, detect bit depth first and optionally convert 12-bit inputs
+    before reading with OpenCV.
+    """
+
+    read_path = Path(path).expanduser().resolve()
+
+    if path.suffix.lower() in {".tif", ".tiff"}:
+        from tcm_utils.tif_utils import get_tiff_bits_per_sample, convert_12bit_tiff_to_16bit
 
     # If image is tif, use tifffile to read it, as OpenCV does not handle
     # 12-bit TIFF files correctly
@@ -629,9 +639,27 @@ def load_image(path: Path) -> np.ndarray:
         image = tifffile.imread(path)
     else:
         image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
+        # bits_per_sample = get_tiff_bits_per_sample(read_path)
+        # if bits_per_sample == 12:
+        #    should_convert = prompt_yes_no(
+        #        "Detected a TIFF that appears to use 12-bit samples. "
+        #        "Convert and save a 16-bit copy with '_16bit' suffix? (press ENTER to convert, type 'n' to cancel)"
+        #    )
+        #    if should_convert:
+        #        converted_path = convert_12bit_tiff_to_16bit(read_path)
+        #        if converted_path is not None:
+        #            read_path = converted_path
+
+    image = cv.imread(str(read_path), cv.IMREAD_GRAYSCALE)
 
     if image is None:
         raise FileNotFoundError(f"Failed to read image: {path}")
+    return image, read_path
+
+
+def load_image(path: Path) -> np.ndarray:
+    """Read a single image file using the default loading pipeline."""
+    image, _ = load_image_with_path(path)
     return image
 
 

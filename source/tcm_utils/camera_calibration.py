@@ -41,6 +41,8 @@ def auto_brightness(
     if contrast == 0 or contrast >= min_contrast:
         return image
 
+    print(f"Auto-brightening image: contrast {contrast:.2f} < {min_contrast}, "
+          f"mean {np.mean(image):.2f} -> target {target_brightness}")
     scale = min_contrast / contrast
     offset = target_brightness - scale * float(np.mean(image))
     return cv.convertScaleAbs(image, alpha=scale, beta=offset)

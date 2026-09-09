@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from tcm_utils.file_dialogs import ask_directory, ask_open_file, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
-    load_image_with_path,
+    load_image,
     path_relative_to,
     save_metadata_json,
     copy_file_to_raw_subfolder,

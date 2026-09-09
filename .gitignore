@@ -63,3 +63,6 @@ Thumbs.db
 
 # Config files
 .config/
+
+# Temporary save location
+.temp/

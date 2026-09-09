@@ -17,6 +17,55 @@ from tqdm import tqdm
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
 
+def beep(frequency_Hz: int = 1000, duration_ms: int = 200):
+    """Play a beep sound using the system's default sound player.
+
+    Parameters
+    ----------
+    frequency_Hz : int
+        Frequency of the beep in Hertz (default: 1000).
+    duration_ms : int
+        Duration of the beep in milliseconds (default: 200).
+    """
+    try:
+        import winsound
+        winsound.Beep(frequency_Hz, duration_ms)
+    except ImportError:
+        # For non-Windows systems, use the 'beep' command if available
+        # os.system(f'beep -f {frequency_Hz} -l {duration_ms}')
+        print("\a", end="", flush=True)
+
+
+def countdown_beep(
+    frequency_Hz: int = 1000,
+    duration_ms: int = 400,
+) -> None:
+    """Play a fixed ``3 2 1 BEEP`` countdown with precise 1 s cadence.
+
+    Start times are scheduled exactly 1.0 second apart (1 -> 2 -> 3 -> BEEP).
+    """
+
+    frequency_Hz = max(37, int(frequency_Hz))
+    duration_ms = max(1, int(duration_ms))
+    countdown_frequency_Hz = max(37, frequency_Hz // 2)
+    countdown_duration_ms = max(1, duration_ms // 2)
+
+    start_time = time.perf_counter()
+    for idx, (freq, dur) in enumerate(
+        (
+            (countdown_frequency_Hz, countdown_duration_ms),
+            (countdown_frequency_Hz, countdown_duration_ms),
+            (countdown_frequency_Hz, countdown_duration_ms),
+            (frequency_Hz, duration_ms),
+        )
+    ):
+        target_start = start_time + idx * 1.0
+        sleep_s = target_start - time.perf_counter()
+        if sleep_s > 0:
+            time.sleep(sleep_s)
+        beep(freq, dur)
+
+
 def make_minimal_progress_bar(
     *,
     total: int | float,
@@ -584,16 +633,22 @@ def load_image_with_path(path: Path) -> tuple[np.ndarray, Path]:
     if path.suffix.lower() in {".tif", ".tiff"}:
         from tcm_utils.tif_utils import get_tiff_bits_per_sample, convert_12bit_tiff_to_16bit
 
-        bits_per_sample = get_tiff_bits_per_sample(read_path)
-        if bits_per_sample == 12:
-            should_convert = prompt_yes_no(
-                "Detected a TIFF that appears to use 12-bit samples. "
-                "Convert and save a 16-bit copy with '_16bit' suffix? (press ENTER to convert, type 'n' to cancel)"
-            )
-            if should_convert:
-                converted_path = convert_12bit_tiff_to_16bit(read_path)
-                if converted_path is not None:
-                    read_path = converted_path
+    # If image is tif, use tifffile to read it, as OpenCV does not handle
+    # 12-bit TIFF files correctly
+    if path.suffix.lower() in {".tif", ".tiff"}:
+        image = tifffile.imread(path)
+    else:
+        image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
+        # bits_per_sample = get_tiff_bits_per_sample(read_path)
+        # if bits_per_sample == 12:
+        #    should_convert = prompt_yes_no(
+        #        "Detected a TIFF that appears to use 12-bit samples. "
+        #        "Convert and save a 16-bit copy with '_16bit' suffix? (press ENTER to convert, type 'n' to cancel)"
+        #    )
+        #    if should_convert:
+        #        converted_path = convert_12bit_tiff_to_16bit(read_path)
+        #        if converted_path is not None:
+        #            read_path = converted_path
 
     image = cv.imread(str(read_path), cv.IMREAD_GRAYSCALE)
 
@@ -628,7 +683,7 @@ def load_images(
     Returns
     -------
     np.ndarray
-        Array of shape (n_images, y, x) with dtype ``uint8``.
+        Array of shape (n_images, y, x), preserving the source image dtype.
     """
 
     if not image_paths:
@@ -678,3 +733,15 @@ def load_metadata(filepath):
 
     print(f"Loaded metadata from {filepath}")
     return loaded_data
+
+
+if __name__ == "__main__":
+    # Example usage of the functions in this module
+    directory = ask_directory(key="example_directory",
+                              title="Select a directory")
+    images = load_images(
+        [directory / f for f in os.listdir(directory) if f.endswith('.tif')])
+
+    print(f"Intensity range of loaded images: {images.min()} - {images.max()}")
+    print(
+        f"Average max intensity +- std across images: {images.max(axis=(1, 2)).mean()} +- {images.max(axis=(1, 2)).std()}")

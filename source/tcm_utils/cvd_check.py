@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from daltonlens import simulate
 from PIL import Image
+from matplotlib.colors import to_hex
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
@@ -123,7 +124,8 @@ def set_cvd_friendly_colors(style="adjusted", first_color=None, do_reset=False, 
 
         if style == "adjusted":
             # Default Matplotlib color cycle
-            default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+            default_colors = [
+                to_hex(c) for c in plt.rcParams['axes.prop_cycle'].by_key()['color']]
 
             # Colors to skip
             skip_colors = {'#2ca02c',  # Green
@@ -141,7 +143,8 @@ def set_cvd_friendly_colors(style="adjusted", first_color=None, do_reset=False, 
 
             # Add grey to the end of the list
             grey_color = '#7f7f7f'  # Grey
-            adjusted_colors.remove(grey_color)
+            if grey_color in adjusted_colors:
+                adjusted_colors.remove(grey_color)
             adjusted_colors.append(grey_color)
 
             # Update Matplotlib's color cycle
@@ -170,3 +173,14 @@ def get_color(n):
     """
     current_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     return current_colors[n % len(current_colors)]
+
+
+if __name__ == "__main__":
+    import matplotlib
+    print(matplotlib.__version__)
+
+    print("DEFAULT")
+    set_cvd_friendly_colors(do_print=True, do_reset=True)
+
+    print("\nADJUSTED")
+    set_cvd_friendly_colors(style="adjusted", do_print=True)

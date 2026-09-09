@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Tuple
 
@@ -7,7 +8,7 @@ import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 
-from tcm_utils.file_dialogs import ask_open_file, ask_directory, find_repo_root
+from tcm_utils.file_dialogs import ask_directory, ask_open_file, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
     load_image_with_path,
@@ -18,6 +19,33 @@ from tcm_utils.io_utils import (
     ensure_processed_artifact,
     prompt_input,
 )
+
+
+def auto_brightness(
+    image: np.ndarray,
+    min_contrast: float = 40.0,
+    target_brightness: float = 128.0,
+) -> np.ndarray:
+    """Brighten a low-contrast image while preserving usable images unchanged.
+
+    Contrast is measured as the intensity distance between the 2nd and 98th
+    percentiles, which limits the influence of isolated bright or dark pixels.
+    """
+    if not 0 < min_contrast <= 255:
+        raise ValueError("min_contrast must be in the range (0, 255]")
+    if not 0 <= target_brightness <= 255:
+        raise ValueError("target_brightness must be in the range [0, 255]")
+
+    low, high = np.percentile(image, (2, 98))
+    contrast = float(high - low)
+    if contrast == 0 or contrast >= min_contrast:
+        return image
+
+    print(f"Auto-brightening image: contrast {contrast:.2f} < {min_contrast}, "
+          f"mean {np.mean(image):.2f} -> target {target_brightness}")
+    scale = min_contrast / contrast
+    offset = target_brightness - scale * float(np.mean(image))
+    return cv.convertScaleAbs(image, alpha=scale, beta=offset)
 
 
 def detect_circle_centers(
@@ -395,6 +423,8 @@ def run_calibration(
     roi: tuple[int, int, int, int] | None = None,
 ) -> float:
     repo_root = find_repo_root(Path(__file__))
+    output_folder = repo_root / ".temp"
+    output_folder.mkdir(parents=True, exist_ok=True)
 
     # Select input image
     if input_path is not None:
@@ -419,9 +449,13 @@ def run_calibration(
     if not data_file.exists():
         raise FileNotFoundError(f"Input file not found: {data_file}")
 
-    # Load image (may use converted TIFF path)
-    img, loaded_image_path = load_image_with_path(data_file)
+    # Load image
+    img = load_image(data_file)
+    img = auto_brightness(img)
     img_h, img_w = img.shape[:2]
+
+    # Print basic info
+    print(f"Loaded image (size {img_w} px x {img_h} px): {data_file}")
 
     # ROI selection
     if roi is None:
@@ -599,9 +633,44 @@ def run_calibration(
     )
     save_metadata_json(metadata, metadata_path)
 
-    print(f"- Plot written to {output_plot}")
-    print(f"- CSV written to {output_csv}")
-    print(f"- Metadata written to {metadata_path}")
+    if output_dir is not None:
+        final_output_folder = Path(output_dir).expanduser().resolve()
+    else:
+        final_output_folder = ask_directory(
+            key="camera_calibration_output",
+            title="Select calibration output directory",
+            default_dir=repo_root,
+            start=Path(__file__),
+        )
+        if final_output_folder is None:
+            print(f"Outputs remain in {output_folder}")
+            return mm_per_px
+
+    final_output_folder.mkdir(parents=True, exist_ok=True)
+    final_raw_folder = final_output_folder / "raw_data"
+    final_raw_folder.mkdir(parents=True, exist_ok=True)
+    final_raw_path = final_raw_folder / moved_raw.name
+
+    shutil.move(str(output_plot), final_output_folder / output_plot.name)
+    shutil.move(str(output_csv), final_output_folder / output_csv.name)
+    shutil.move(str(moved_raw), final_raw_path)
+    (output_folder / "raw_data").rmdir()
+    shutil.move(str(metadata_path), final_output_folder / metadata_path.name)
+    output_folder.rmdir()
+
+    output_plot = final_output_folder / output_plot.name
+    output_csv = final_output_folder / output_csv.name
+    metadata_path = final_output_folder / metadata_path.name
+    metadata["raw_data_path"] = path_relative_to(final_raw_path, repo_root)
+    metadata["output_files"] = {
+        "plot_pdf": path_relative_to(output_plot, repo_root),
+        "calibration_csv": path_relative_to(output_csv, repo_root),
+    }
+    save_metadata_json(metadata, metadata_path)
+
+    print(f"Plot written to {output_plot}")
+    print(f"CSV written to {output_csv}")
+    print(f"Metadata written to {metadata_path}")
     print(
         f"Estimated scale: {mm_per_px:.6f} mm/px (spacing {spacing_px:.3f} px)")
     return mm_per_px
@@ -616,7 +685,7 @@ def ensure_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
-) -> Path | None:
+) -> float | None:
     """Return calibration metadata path or run calibration to create it.
 
     Resolution order (no subfolder scanning):

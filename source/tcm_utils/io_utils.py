@@ -623,7 +623,12 @@ def ensure_processed_artifact(
 def load_image(path: Path) -> np.ndarray:
     """Read a single image file using OpenCV."""
 
-    image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
+    # If image is tif, use tifffile to read it, as OpenCV does not handle
+    # 12-bit TIFF files correctly
+    if path.suffix.lower() in {".tif", ".tiff"}:
+        image = tifffile.imread(path)
+    else:
+        image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
 
     if image is None:
         raise FileNotFoundError(f"Failed to read image: {path}")
@@ -650,7 +655,7 @@ def load_images(
     Returns
     -------
     np.ndarray
-        Array of shape (n_images, y, x) with dtype ``uint8``.
+        Array of shape (n_images, y, x), preserving the source image dtype.
     """
 
     if not image_paths:
@@ -700,3 +705,15 @@ def load_metadata(filepath):
 
     print(f"Loaded metadata from {filepath}")
     return loaded_data
+
+
+if __name__ == "__main__":
+    # Example usage of the functions in this module
+    directory = ask_directory(key="example_directory",
+                              title="Select a directory")
+    images = load_images(
+        [directory / f for f in os.listdir(directory) if f.endswith('.tif')])
+
+    print(f"Intensity range of loaded images: {images.min()} - {images.max()}")
+    print(
+        f"Average max intensity +- std across images: {images.max(axis=(1, 2)).mean()} +- {images.max(axis=(1, 2)).std()}")

@@ -205,7 +205,7 @@ def ask_open_file(
 
 @overload
 def ask_directory(
-    key: str,
+    key: str | None,
     title: str = "Select directory",
     default_dir: Path | None = None,
     start: Path | None = None,
@@ -216,7 +216,7 @@ def ask_directory(
 
 @overload
 def ask_directory(
-    key: str,
+    key: str | None,
     title: str = "Select directory",
     default_dir: Path | None = None,
     start: Path | None = None,
@@ -226,7 +226,7 @@ def ask_directory(
 
 
 def ask_directory(
-    key: str,
+    key: str | None,
     title: str = "Select directory",
     default_dir: Path | None = None,
     start: Path | None = None,
@@ -235,13 +235,25 @@ def ask_directory(
     """Ask the user to select a directory.
 
     Works like :func:`ask_open_file`, but uses a directory picker and remembers
-    the last used directory per ``key``.
+    the last used directory per ``key``. Pass ``None`` to disable remembering
+    and always start in ``default_dir`` (or the repository root).
 
     Parameters
     ----------
     multiple:
         When True, repeatedly prompts for directories until the user cancels,
         and returns all selected directories. Defaults to False.
+    default_dir:
+        Directory to open in the picker when no directory has been remembered
+        for ``key``. Defaults to the repository root. When ``key`` is None,
+        this is always the starting directory.
+    key:
+        Stable identifier for remembering the last-used directory, or None to
+        disable reading and writing a remembered directory.
+    start:
+        Optional path used as a hint for locating the repository config. It
+        does not set the picker's initial directory; use ``default_dir`` for
+        that.
 
     Returns
     -------
@@ -249,14 +261,20 @@ def ask_directory(
         A selected directory path (default mode), a list of selected
         directory paths (``multiple=True``), or None when cancelled.
     """
-    filename = "file_dialog.ini"
-    section = "paths"
     repo_root = find_repo_root(start, prefer_cwd=True)
-    config_path = get_config_path(filename, start=start, prefer_cwd=True)
-    config = _load_config(config_path, section=section)
-
     fallback_dir = default_dir or repo_root
-    initial_dir = _get_last_dir(config, key, fallback_dir, section=section)
+    section = "paths"
+    config_state: tuple[Path, configparser.ConfigParser] | None = None
+    if key is not None:
+        filename = "file_dialog.ini"
+        config_path = get_config_path(filename, start=start, prefer_cwd=True)
+        config = _load_config(config_path, section=section)
+        config_state = config_path, config
+        initial_dir = _get_last_dir(
+            config, key, fallback_dir, section=section
+        )
+    else:
+        initial_dir = fallback_dir
 
     # Create and hide a root window; required for the dialog to work.
     root = Tk()
@@ -284,9 +302,11 @@ def ask_directory(
 
         chosen_path = Path(selected).expanduser().resolve()
         print(f"Selected directory: {chosen_path}")
-        _remember_last_dir(
-            config_path, config, key, chosen_path, section=section
-        )
+        if config_state is not None and key is not None:
+            config_path, config = config_state
+            _remember_last_dir(
+                config_path, config, key, chosen_path, section=section
+            )
         return chosen_path
 
     selected_paths: list[Path] = []
@@ -312,16 +332,18 @@ def ask_directory(
     if not selected_paths:
         return None
 
-    _remember_last_dir(
-        config_path, config, key, selected_paths[-1], section=section
-    )
+    if config_state is not None and key is not None:
+        config_path, config = config_state
+        _remember_last_dir(
+            config_path, config, key, selected_paths[-1], section=section
+        )
     return selected_paths
 
 
 def ensure_directory_path(
     value: str | Path | None,
     *,
-    key: str,
+    key: str | None,
     title: str = "Select directory",
     default_dir: Path | None = None,
     start: Path | None = None,

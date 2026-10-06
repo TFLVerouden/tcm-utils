@@ -311,13 +311,16 @@ def make_video(
     the default stretch of 0.002 therefore makes 20,000-fps footage play at
     40 fps, retaining every selected frame. ``output_frame_rate`` overrides
     that derived rate. Frame labels use the original filename number divided
-    by the recording rate. TODO: confirm whether frame numbering is zero- or
+    by the recording rate. The video is always encoded into ``<repo>/.temp``
+    first and then moved to ``output_path``; when ``output_path`` is None, a
+    folder picker is shown afterwards (cancelling leaves the video in .temp).
+    TODO: confirm whether frame numbering is zero- or
     one-based; currently frame 1 is labeled as 1 / recording rate.
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
         selected_dir = ask_directory(
-            key="video_maker",
+            key="video_maker_input",
             title="Select the directory containing the frames",
         )
         if not selected_dir:
@@ -355,17 +358,19 @@ def make_video(
     frame_rate = output_frame_rate or recording_frame_rate * stretch
     frame_rate_text = format(frame_rate, ".12g")
 
-    # Choose the destination and create its parent folder; this function writes
-    # H.264 only into an MP4 container.
-    output_path = (
-        Path(output_path).expanduser()
-        if output_path is not None
-        else find_repo_root(Path(__file__)) / ".temp" / "video.mp4"
-    )
-    output_path = output_path.resolve()
-    if output_path.suffix.lower() != ".mp4":
-        raise ValueError("H.264 video output must use the .mp4 extension")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # The video is always encoded into the repo's .temp folder first. The final
+    # destination is the caller's output_path, or (when None) a folder the user
+    # is asked to pick once encoding has finished. This function writes H.264
+    # only into an MP4 container.
+    temp_dir = find_repo_root(Path(__file__)) / ".temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    final_path: Path | None = None
+    if output_path is not None:
+        final_path = Path(output_path).expanduser().resolve()
+        if final_path.suffix.lower() != ".mp4":
+            raise ValueError("H.264 video output must use the .mp4 extension")
+    temp_video_path = temp_dir / \
+        (final_path.name if final_path else "video.mp4")
 
     # Inspect the sequence once to ensure all frames have matching dimensions
     # and to calculate one shared contrast range, preventing brightness flicker.
@@ -383,21 +388,20 @@ def make_video(
     # Show the user the expected encoding settings and allow cancellation before
     # starting the more expensive encode.
     duration_s = len(numbered_paths) / frame_rate
+    destination_text = (
+        ", saved to " + str(final_path) if final_path else ""
+    )
     summary = (
-        f"Create {len(numbered_paths)}-frame H.264 MP4 at {frame_rate:g} fps "
-        f"({duration_s:.3f} s), {width}x{height}, to {output_path}?"
+        f"Original video: {len(numbered_paths)} {width}x{height} .TIFF frames at {recording_frame_rate:g} fps.\n"
+        f"Create an H.264 MP4 video that plays back at {frame_rate:g} fps "
+        f"({duration_s:.3f} s){destination_text}?"
     )
     if confirm and not prompt_yes_no(summary, default=True):
         return None
-    if output_path.exists():
-        if confirm:
-            if not prompt_yes_no(
-                f"Overwrite existing video {output_path}?", default=False
-            ):
-                return None
-        else:
-            raise FileExistsError(
-                f"Output video already exists: {output_path}")
+    # Fail early for an explicit destination that cannot be overwritten, instead
+    # of after a long encode. The check is repeated when the video is delivered.
+    if final_path is not None and final_path.exists() and not confirm:
+        raise FileExistsError(f"Output video already exists: {final_path}")
 
     # Locate FFmpeg explicitly so a missing encoder produces an actionable error.
     ffmpeg = shutil.which("ffmpeg")
@@ -406,12 +410,12 @@ def make_video(
             "FFmpeg is required to create H.264 MP4 files; install FFmpeg and retry."
         )
 
-    # Encode to a temporary file beside the destination so a failed encode
-    # cannot leave a partial video at the requested output path.
+    # Encode to a scratch file inside .temp so a failed encode cannot leave a
+    # partial video at the temp video path or the final destination.
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{output_path.stem}.",
+        prefix=f".{temp_video_path.stem}.",
         suffix=".tmp.mp4",
-        dir=output_path.parent,
+        dir=temp_dir,
     )
     os.close(descriptor)
     temporary_path = Path(temporary_name)
@@ -477,14 +481,14 @@ def make_video(
             process.stdin.write(np.ascontiguousarray(frame).tobytes())
 
         # Signal the end of raw video input, collect FFmpeg's result, and only
-        # publish the temporary output when the complete encode succeeded.
+        # promote the scratch file to the temp video when the encode succeeded.
         process.stdin.close()
         stderr = process.stderr.read() if process.stderr is not None else b""
         return_code = process.wait()
         if return_code:
             message = stderr.decode("utf-8", errors="replace").strip()
             raise RuntimeError(f"FFmpeg failed to encode the video: {message}")
-        os.replace(temporary_path, output_path)
+        os.replace(temporary_path, temp_video_path)
         completed = True
     except BrokenPipeError as error:
         # Include FFmpeg's diagnostic if it exited before accepting all frames.
@@ -495,17 +499,44 @@ def make_video(
             f"FFmpeg stopped while encoding the video: {message}") from error
     finally:
         # Ensure the subprocess and temporary file are cleaned up on every
-        # failure path while leaving a successfully published video untouched.
+        # failure path while leaving a successfully encoded video untouched.
         if process.poll() is None:
             process.kill()
             process.wait()
         if not completed:
             temporary_path.unlink(missing_ok=True)
 
+    # Without an explicit destination, ask the user where the finished video
+    # should go; cancelling leaves it in .temp.
+    if final_path is None:
+        chosen_dir = ask_directory(
+            key=None,
+            title="Select the folder to save the video in",
+            default_dir=frames_dir,
+        )
+        if not chosen_dir:
+            print(f"No folder selected. Video left at {temp_video_path}")
+            return temp_video_path
+        final_path = Path(chosen_dir).expanduser(
+        ).resolve() / temp_video_path.name
+
+    # Move the finished video from .temp to its destination, asking before
+    # replacing an existing file.
+    if final_path.exists():
+        if not confirm:
+            raise FileExistsError(f"Output video already exists: {final_path}")
+        if not prompt_yes_no(
+            f"Overwrite existing video {final_path}?", default=False
+        ):
+            print(f"Video left at {temp_video_path}")
+            return temp_video_path
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(temp_video_path), str(final_path))
+
     # Report and return the final video path for convenient programmatic use.
-    print(f"Video saved to {output_path}")
-    return output_path
+    print(f"Video saved to {final_path}")
+    return final_path
 
 
 if __name__ == "__main__":
-    make_video(frames_range=(1, 100))
+    make_video(time_stretch_s_per_s=0.002, frames_range=(1, 100))

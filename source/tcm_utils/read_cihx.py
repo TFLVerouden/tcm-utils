@@ -158,8 +158,8 @@ def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metada
         ("rotate", "Rotation [deg]"),
     ]
 
-    print("\n=== Extracted Metadata ===")
     if verbose:
+        print("\n=== Extracted Metadata ===")
         for key, label in important_keys:
             value = recursive_search(metadata_dict, key)
             if value is not None:

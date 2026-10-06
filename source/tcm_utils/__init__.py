@@ -9,6 +9,7 @@ from . import io_utils
 from . import plot_style
 from . import tif_utils
 from . import time_utils
+from . import video_maker
 
 __all__ = [
     "camera_calibration",
@@ -18,4 +19,5 @@ __all__ = [
     "plot_style",
     "tif_utils",
     "time_utils",
+    "video_maker",
 ]

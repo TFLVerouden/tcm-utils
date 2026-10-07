@@ -11,6 +11,20 @@ frames to an H.264 MP4. FFmpeg must be installed and available on `PATH`.
 Frame ranges refer to the trailing number before `.tif`/`.tiff` and include both
 endpoints. By default, the output frame rate is the recording rate multiplied by
 `time_stretch_s_per_s` (0.002 by default), and every selected frame is retained.
+Before sequence-wide contrast analysis, the default interactive flow previews
+the first selected frame with a timestamp and a quick per-frame contrast
+stretch. Set `crop_roi=(y_start, y_end, x_start, x_end)` to crop every frame; the
+preview, contrast analysis, and encoded video all use the cropped image. Negative
+coordinates count from the corresponding image edge, while a zero end coordinate
+means the full extent in that direction. The first numbered TIFF in the folder
+is labeled 0; later timestamps retain their offset from it.
+The timestamp uses the bundled PT Sans font by default. Set `label_font_path`
+to a `.ttf` or `.otf` file, `label_font_size_px` to its pixel size, and
+`label_color` to `"black"`, `"white"`, `"gray"`/`"grey"`, or an integer from 0
+(black) to 255 (white). `label_stroke_color` accepts the same values and
+defaults to `None`, which disables the stroke. `label_location` accepts
+positions such as `"upper left"` and `"lower right"`, or normalized coordinates
+from `(0, 0)` at the upper-left margin to `(1, 1)` at the lower-right margin.
 The video is first encoded into `<repo>/.temp` and then moved to `output_path`;
 if `output_path` is omitted, a folder picker asks where to save it afterwards.
 For example:
@@ -22,5 +36,10 @@ make_video(
     frames_dir="/path/to/tiff-frames",
     frames_range=(1, 40),
     output_path="/path/to/export/first-40.mp4",
+    label_font_size_px=32,
+    label_color=220,
+    label_stroke_color="black",
+    label_location="upper right",
+    crop_roi=(59, -59, 0, 0),
 )
 ```

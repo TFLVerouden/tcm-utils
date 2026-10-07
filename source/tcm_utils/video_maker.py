@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+from decimal import Decimal
 import math
 import os
 from pathlib import Path
@@ -344,10 +345,18 @@ def _format_time(
 ) -> str:
     seconds = (frame_number - first_frame_number) / recording_rate
     value = seconds * _TIME_FACTORS[unit]
-    return f"{value:.3f} {unit}"
+    time_step = _TIME_FACTORS[unit] / recording_rate
+    precision = max(
+        0,
+        -Decimal(format(time_step, ".3g")).as_tuple().exponent,
+    )
+    return f"{value:.{precision}f} {unit}"
 
 
-def _resolve_label_color(color: str | int) -> int:
+def _resolve_label_color(
+    color: str | int,
+    parameter_name: str = "label_color",
+) -> int:
     """Convert a grayscale name or intensity to an 8-bit gray value."""
     if isinstance(color, str):
         named_colors = {"black": 0, "white": 255, "gray": 128, "grey": 128}
@@ -355,13 +364,13 @@ def _resolve_label_color(color: str | int) -> int:
             return named_colors[color.lower()]
         except KeyError as error:
             raise ValueError(
-                "label_color must be black, white, gray/grey, or an integer "
+                f"{parameter_name} must be black, white, gray/grey, or an integer "
                 "grayscale value from 0 to 255"
             ) from error
 
     if isinstance(color, bool) or not isinstance(color, int) or not 0 <= color <= 255:
         raise ValueError(
-            "label_color must be black, white, gray/grey, or an integer "
+            f"{parameter_name} must be black, white, gray/grey, or an integer "
             "grayscale value from 0 to 255"
         )
     return color
@@ -405,17 +414,26 @@ def _add_time_label(
     *,
     font: ImageFont.FreeTypeFont,
     color: int,
+    stroke_color: int | None,
     location: tuple[float, float],
     font_size_px: int,
 ) -> np.ndarray:
     """Draw the timestamp in grayscale, anchored within the frame."""
     frame = Image.fromarray(image).convert("L")
     drawing = ImageDraw.Draw(frame)
-    # stroke_width = max(1, round(font_size_px / 12))
-    bounds = drawing.textbbox((0, 0), label, font=font)
-    #   stroke_width=stroke_width)
-    text_width = bounds[2] - bounds[0]
-    text_height = bounds[3] - bounds[1]
+    stroke_width = (
+        max(1, round(font_size_px / 12))
+        if stroke_color is not None
+        else 0
+    )
+    stroke_bounds = drawing.textbbox(
+        (0, 0),
+        label,
+        font=font,
+        stroke_width=stroke_width,
+    )
+    text_width = stroke_bounds[2] - stroke_bounds[0]
+    text_height = stroke_bounds[3] - stroke_bounds[1]
 
     # Named locations and normalized coordinates both select a point within
     # the available margin-to-margin space for the complete label.
@@ -431,12 +449,12 @@ def _add_time_label(
     top = round(margin + (max_top - margin) * location[1])
 
     drawing.text(
-        (left - bounds[0], top - bounds[1]),
+        (left - stroke_bounds[0], top - stroke_bounds[1]),
         label,
         font=font,
         fill=color,
-        # stroke_width=stroke_width,
-        stroke_fill=255 if color < 128 else 0,
+        stroke_width=stroke_width,
+        stroke_fill=stroke_color,
     )
     return np.asarray(frame)
 
@@ -448,6 +466,7 @@ def _show_frame_preview(
     *,
     font: ImageFont.FreeTypeFont,
     color: int,
+    stroke_color: int | None,
     location: tuple[float, float],
     font_size_px: int,
 ) -> bool:
@@ -458,13 +477,14 @@ def _show_frame_preview(
         label,
         font=font,
         color=color,
+        stroke_color=stroke_color,
         location=location,
         font_size_px=font_size_px,
     )
 
     # Use Tk for both the preview and the later folder picker. On macOS,
     # Matplotlib's native backend and Tk can conflict in the same process.
-    from tkinter import Tk, ttk
+    from tkinter import Tk
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from matplotlib.figure import Figure
 
@@ -484,40 +504,24 @@ def _show_frame_preview(
     canvas.draw()
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
-    # Keep the decision prompt in the preview window so Enter can both accept
-    # the sample and close the plot immediately.
-    accepted = False
+    # Center on Tk's default display, then raise the static preview above other
+    # windows before waiting for the terminal response.
+    root.update_idletasks()
+    x = max(0, (root.winfo_screenwidth() - root.winfo_reqwidth()) // 2)
+    y = max(0, (root.winfo_screenheight() - root.winfo_reqheight()) // 2)
+    root.geometry(f"+{x}+{y}")
+    root.lift()
 
-    def finish(continue_video: bool) -> None:
-        nonlocal accepted
-        accepted = continue_video
-        root.quit()
-
-    controls = ttk.Frame(root, padding=8)
-    controls.pack(fill="x")
-    ttk.Label(
-        controls,
-        text="Does this preview look good? Press Enter to continue, or Esc to cancel.",
-    ).pack(side="left", padx=(0, 12))
-    ttk.Button(
-        controls,
-        text="Continue",
-        command=lambda: finish(True),
-    ).pack(side="right")
-    ttk.Button(
-        controls,
-        text="Cancel",
-        command=lambda: finish(False),
-    ).pack(side="right", padx=(0, 8))
-
-    root.bind("<Return>", lambda _event: finish(True))
-    root.bind("<KP_Enter>", lambda _event: finish(True))
-    root.bind("<Escape>", lambda _event: finish(False))
-    root.protocol("WM_DELETE_WINDOW", lambda: finish(False))
-    root.focus_force()
-    root.mainloop()
-    root.destroy()
-    return accepted
+    # Render the static preview without entering Tk's event loop, so the user
+    # can answer in the terminal and Enter can close the preview immediately.
+    root.update()
+    try:
+        return prompt_yes_no(
+            "Does this preview look good? Press ENTER to continue.",
+            default=True,
+        )
+    finally:
+        root.destroy()
 
 
 def make_video(
@@ -536,6 +540,7 @@ def make_video(
     label_font_size_px: int = 48,
     label_color: str | int = "black",
     label_location: str | tuple[float, float] = "upper left",
+    label_stroke_color: str | int | None = None,
     crop_roi: tuple[int, int, int, int] | None = None,
 ) -> Path | None:
     """Encode numbered grayscale TIFF frames as an H.264 MP4.
@@ -560,9 +565,10 @@ def make_video(
     primary font is not available.
     ``label_font_path`` selects a TrueType/OpenType font (PT Sans by default),
     ``label_font_size_px`` sets its pixel size, ``label_color`` accepts black,
-    white, gray/grey, or a grayscale integer from 0 to 255, and
-    ``label_location`` accepts a common legend-style location or a normalized
-    (x, y) tuple.
+    white, gray/grey, or a grayscale integer from 0 to 255.
+    ``label_stroke_color`` accepts the same colors; ``None`` (the default)
+    disables the stroke. ``label_location`` accepts a common legend-style
+    location or a normalized (x, y) tuple.
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
@@ -615,6 +621,12 @@ def make_video(
 
     label_font = ImageFont.truetype(str(font_path), size=label_font_size_px)
     label_gray = _resolve_label_color(label_color)
+    stroke_gray = None
+    if label_stroke_color is not None:
+        stroke_gray = _resolve_label_color(
+            label_stroke_color,
+            "label_stroke_color",
+        )
     label_anchor = _resolve_label_location(label_location)
 
     # Select the requested TIFFs by their trailing frame numbers and determine
@@ -682,6 +694,7 @@ def make_video(
             preview_label,
             font=label_font,
             color=label_gray,
+            stroke_color=stroke_gray,
             location=label_anchor,
             font_size_px=label_font_size_px,
         ):
@@ -804,6 +817,7 @@ def make_video(
                 label,
                 font=label_font,
                 color=label_gray,
+                stroke_color=stroke_gray,
                 location=label_anchor,
                 font_size_px=label_font_size_px,
             )
@@ -870,5 +884,5 @@ def make_video(
 
 if __name__ == "__main__":
     make_video(frames_dir="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec",
-               time_stretch_s_per_s=0.002, crop_roi=(8, 0, 0, 0),
+               time_stretch_s_per_s=0.002, crop_roi=(10, 0, 0, 0),
                frames_range=(1, 100), show_preview=True, label_font_style="bold")

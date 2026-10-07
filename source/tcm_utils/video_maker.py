@@ -13,8 +13,8 @@ import subprocess
 import tempfile
 from typing import Iterator
 
-import cv2 as cv
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 
 from tcm_utils.file_dialogs import ask_directory, find_repo_root
@@ -33,6 +33,18 @@ _FRAME_RATE_KEYS = {
     "fps",
 }
 _TIME_FACTORS = {"s": 1.0, "ms": 1_000.0, "us": 1_000_000.0}
+_LABEL_LOCATIONS = {
+    "upper left": (0.0, 0.0),
+    "upper center": (0.5, 0.0),
+    "upper right": (1.0, 0.0),
+    "center left": (0.0, 0.5),
+    "center": (0.5, 0.5),
+    "center right": (1.0, 0.5),
+    "lower left": (0.0, 1.0),
+    "lower center": (0.5, 1.0),
+    "lower right": (1.0, 1.0),
+    "right": (1.0, 0.5),
+}
 
 
 def _frame_number(path: Path) -> int:
@@ -302,7 +314,7 @@ def _sequence_contrast_limits(
     return source_shape, cropped_shape, (low_limit, high_limit)
 
 
-def auto_brightness(
+def _auto_brightness(
     image: np.ndarray,
     low_percentile: float = 0.5,
     high_percentile: float = 99.95,
@@ -324,26 +336,188 @@ def auto_brightness(
     return np.rint(stretched).astype(np.uint8)
 
 
-def _format_time(frame_number: int, recording_rate: float, unit: str) -> str:
-    seconds = frame_number / recording_rate
+def _format_time(
+    frame_number: int,
+    recording_rate: float,
+    unit: str,
+    first_frame_number: int,
+) -> str:
+    seconds = (frame_number - first_frame_number) / recording_rate
     value = seconds * _TIME_FACTORS[unit]
     return f"{value:.3f} {unit}"
 
 
-def _add_time_label(image: np.ndarray, label: str) -> np.ndarray:
-    height, width = image.shape
-    font_scale = max(0.45, min(width, height) / 900)
-    thickness = max(1, round(font_scale * 2))
-    position = (16, min(height - 12, 32 + round(font_scale * 8)))
-    cv.putText(
-        image, label, position, cv.FONT_HERSHEY_SIMPLEX, font_scale, 0, thickness + 2,
-        cv.LINE_AA,
+def _resolve_label_color(color: str | int) -> int:
+    """Convert a grayscale name or intensity to an 8-bit gray value."""
+    if isinstance(color, str):
+        named_colors = {"black": 0, "white": 255, "gray": 128, "grey": 128}
+        try:
+            return named_colors[color.lower()]
+        except KeyError as error:
+            raise ValueError(
+                "label_color must be black, white, gray/grey, or an integer "
+                "grayscale value from 0 to 255"
+            ) from error
+
+    if isinstance(color, bool) or not isinstance(color, int) or not 0 <= color <= 255:
+        raise ValueError(
+            "label_color must be black, white, gray/grey, or an integer "
+            "grayscale value from 0 to 255"
+        )
+    return color
+
+
+def _resolve_label_location(
+    location: str | tuple[float, float],
+) -> tuple[float, float]:
+    """Return normalized label placement, accepting legend-like names."""
+    if isinstance(location, str):
+        try:
+            return _LABEL_LOCATIONS[location.lower()]
+        except KeyError as error:
+            choices = ", ".join(_LABEL_LOCATIONS)
+            raise ValueError(
+                f"Unknown label_location {location!r}; choose one of {choices} "
+                "or pass an (x, y) pair from 0 to 1"
+            ) from error
+
+    if (
+        not isinstance(location, tuple)
+        or len(location) != 2
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+            for value in location
+        )
+    ):
+        raise ValueError(
+            "label_location must be a Matplotlib-style position name or "
+            "an (x, y) pair from 0 to 1"
+        )
+    return float(location[0]), float(location[1])
+
+
+def _add_time_label(
+    image: np.ndarray,
+    label: str,
+    *,
+    font: ImageFont.FreeTypeFont,
+    color: int,
+    location: tuple[float, float],
+    font_size_px: int,
+) -> np.ndarray:
+    """Draw the timestamp in grayscale, anchored within the frame."""
+    frame = Image.fromarray(image).convert("L")
+    drawing = ImageDraw.Draw(frame)
+    # stroke_width = max(1, round(font_size_px / 12))
+    bounds = drawing.textbbox((0, 0), label, font=font)
+    #   stroke_width=stroke_width)
+    text_width = bounds[2] - bounds[0]
+    text_height = bounds[3] - bounds[1]
+
+    # Named locations and normalized coordinates both select a point within
+    # the available margin-to-margin space for the complete label.
+    margin = max(8, round(font_size_px / 2))
+    max_left = frame.width - text_width - margin
+    max_top = frame.height - text_height - margin
+    if max_left < margin or max_top < margin:
+        raise ValueError(
+            f"Time label at {font_size_px}px does not fit in "
+            f"{frame.width}x{frame.height} frame"
+        )
+    left = round(margin + (max_left - margin) * location[0])
+    top = round(margin + (max_top - margin) * location[1])
+
+    drawing.text(
+        (left - bounds[0], top - bounds[1]),
+        label,
+        font=font,
+        fill=color,
+        # stroke_width=stroke_width,
+        stroke_fill=255 if color < 128 else 0,
     )
-    cv.putText(
-        image, label, position, cv.FONT_HERSHEY_SIMPLEX, font_scale, 255, thickness,
-        cv.LINE_AA,
+    return np.asarray(frame)
+
+
+def _show_frame_preview(
+    image: np.ndarray,
+    frame_path: Path,
+    label: str,
+    *,
+    font: ImageFont.FreeTypeFont,
+    color: int,
+    location: tuple[float, float],
+    font_size_px: int,
+) -> bool:
+    """Display one prepared frame so the user can review its appearance."""
+    # Build the preview with the same overlay and contrast operation as output.
+    preview = _add_time_label(
+        _auto_brightness(image),
+        label,
+        font=font,
+        color=color,
+        location=location,
+        font_size_px=font_size_px,
     )
-    return image
+
+    # Use Tk for both the preview and the later folder picker. On macOS,
+    # Matplotlib's native backend and Tk can conflict in the same process.
+    from tkinter import Tk, ttk
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from matplotlib.figure import Figure
+
+    root = Tk()
+    root.title(f"Preview: {frame_path.name}")
+    figure = Figure(figsize=(10, 7))
+    axis = figure.add_subplot(111)
+    axis.imshow(preview, cmap="gray", vmin=0, vmax=255)
+    axis.set_title(
+        f"{frame_path.name}\n"
+        "Preview contrast is based on this frame; the video uses one "
+        "sequence-wide contrast range."
+    )
+    axis.axis("off")
+    figure.tight_layout()
+    canvas = FigureCanvasTkAgg(figure, master=root)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    # Keep the decision prompt in the preview window so Enter can both accept
+    # the sample and close the plot immediately.
+    accepted = False
+
+    def finish(continue_video: bool) -> None:
+        nonlocal accepted
+        accepted = continue_video
+        root.quit()
+
+    controls = ttk.Frame(root, padding=8)
+    controls.pack(fill="x")
+    ttk.Label(
+        controls,
+        text="Does this preview look good? Press Enter to continue, or Esc to cancel.",
+    ).pack(side="left", padx=(0, 12))
+    ttk.Button(
+        controls,
+        text="Continue",
+        command=lambda: finish(True),
+    ).pack(side="right")
+    ttk.Button(
+        controls,
+        text="Cancel",
+        command=lambda: finish(False),
+    ).pack(side="right", padx=(0, 8))
+
+    root.bind("<Return>", lambda _event: finish(True))
+    root.bind("<KP_Enter>", lambda _event: finish(True))
+    root.bind("<Escape>", lambda _event: finish(False))
+    root.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+    root.focus_force()
+    root.mainloop()
+    root.destroy()
+    return accepted
 
 
 def make_video(
@@ -356,6 +530,12 @@ def make_video(
     recording_frame_rate: float | None = None,
     n_jobs: int | None = None,
     confirm: bool = True,
+    show_preview: bool = True,
+    label_font_path: str | Path | None = None,
+    label_font_style: str = "regular",
+    label_font_size_px: int = 48,
+    label_color: str | int = "black",
+    label_location: str | tuple[float, float] = "upper left",
     crop_roi: tuple[int, int, int, int] | None = None,
 ) -> Path | None:
     """Encode numbered grayscale TIFF frames as an H.264 MP4.
@@ -364,8 +544,9 @@ def make_video(
     The output rate defaults to recording rate times ``time_stretch_s_per_s``;
     the default stretch of 0.002 therefore makes 20,000-fps footage play at
     40 fps, retaining every selected frame. ``output_frame_rate`` overrides
-    that derived rate. Frame labels use the original filename number divided
-    by the recording rate. The video is always encoded into ``<repo>/.temp``
+    that derived rate. Frame labels use elapsed time from the first numbered
+    TIFF in the folder, so that frame displays 0 and selected later frames
+    retain their original offsets. The video is always encoded into ``<repo>/.temp``
     first and then moved to ``output_path``; when ``output_path`` is None, a
     folder picker is shown afterwards (cancelling leaves the video in .temp).
     ``crop_roi`` optionally crops every frame before preview and encoding, using
@@ -373,6 +554,15 @@ def make_video(
     offsets from the corresponding image edge, and zero end coordinates mean
     the full extent in that direction.
     With ``confirm=True`` (the default), ``show_preview=True`` displays the
+    first selected frame with a timestamp and a quick per-frame contrast
+    stretch before the sequence-wide contrast analysis begins.
+    ``label_font_style`` specifies a fallback font style to use if the
+    primary font is not available.
+    ``label_font_path`` selects a TrueType/OpenType font (PT Sans by default),
+    ``label_font_size_px`` sets its pixel size, ``label_color`` accepts black,
+    white, gray/grey, or a grayscale integer from 0 to 255, and
+    ``label_location`` accepts a common legend-style location or a normalized
+    (x, y) tuple.
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
@@ -400,10 +590,45 @@ def make_video(
         not math.isfinite(output_frame_rate) or output_frame_rate <= 0
     ):
         raise ValueError("output_frame_rate must be positive or None")
+    if (
+        isinstance(label_font_size_px, bool)
+        or not isinstance(label_font_size_px, int)
+        or label_font_size_px <= 0
+    ):
+        raise ValueError("label_font_size_px must be a positive integer")
+
+    # Resolve the label style once and reuse its font during preview and encoding.
+    if label_font_path is not None:
+        font_path = Path(label_font_path).expanduser().resolve()
+    elif label_font_style.lower() == "regular":
+        font_path = Path(__file__).parent / "fonts" / "PTSans-Regular.ttf"
+    elif label_font_style.lower() == "bold":
+        font_path = Path(__file__).parent / "fonts" / "PTSans-Bold.ttf"
+    elif label_font_style.lower() == "italic":
+        font_path = Path(__file__).parent / "fonts" / "PTSans-Italic.ttf"
+    elif label_font_style.lower() == "bold italic":
+        font_path = Path(__file__).parent / "fonts" / "PTSans-BoldItalic.ttf"
+    else:
+        raise ValueError(
+            "label_font_style must be one of 'regular', 'bold', 'italic', or 'bold italic'"
+        )
+
+    label_font = ImageFont.truetype(str(font_path), size=label_font_size_px)
+    label_gray = _resolve_label_color(label_color)
+    label_anchor = _resolve_label_location(label_location)
 
     # Select the requested TIFFs by their trailing frame numbers and determine
     # the camera's recording rate from metadata, or accept a caller-supplied rate.
     numbered_paths = _select_frame_paths(frames_dir, frames_range)
+    # Use the earliest numbered TIFF in the folder as the time origin so a
+    # selection starting later keeps its offset from the recording's first frame.
+    first_frame_number = min(
+        _frame_number(path)
+        for path in frames_dir.iterdir()
+        if path.is_file()
+        and path.suffix.lower() in {".tif", ".tiff"}
+        and not path.name.startswith(".")
+    )
     if recording_frame_rate is None:
         recording_frame_rate = _get_recording_frame_rate(frames_dir)
     elif not math.isfinite(recording_frame_rate) or recording_frame_rate <= 0:
@@ -429,9 +654,42 @@ def make_video(
     temp_video_path = temp_dir / \
         (final_path.name if final_path else "video.mp4")
 
+    # Preview a single selected TIFF before loading the whole sequence for its
+    # shared contrast range; this gives quick visual feedback on the edits.
+    if confirm and show_preview:
+        preview_number, preview_path = numbered_paths[0]
+        preview_image = _validate_frame(load_image(preview_path), preview_path)
+        preview_image = _crop_frame(preview_image, crop_roi)
+        if preview_image.shape[0] % 2 or preview_image.shape[1] % 2:
+            raise ValueError(
+                "H.264 4:2:0 requires even frame dimensions; "
+                f"got {preview_image.shape[1]}x{preview_image.shape[0]}"
+            )
+        preview_label = _format_time(
+            preview_number,
+            recording_frame_rate,
+            time_label_unit,
+            first_frame_number,
+        )
+        print(
+            "Reviewing one-frame preview before analyzing all selected TIFFs. "
+            "The preview uses per-frame contrast; final contrast is computed "
+            "across the sequence."
+        )
+        if not _show_frame_preview(
+            preview_image,
+            preview_path,
+            preview_label,
+            font=label_font,
+            color=label_gray,
+            location=label_anchor,
+            font_size_px=label_font_size_px,
+        ):
+            return None
+
     # Inspect the sequence once to ensure all frames have matching dimensions
     # and to calculate one shared contrast range, preventing brightness flicker.
-    expected_shape, contrast_limits = _sequence_contrast_limits(
+    source_shape, expected_shape, contrast_limits = _sequence_contrast_limits(
         numbered_paths, n_jobs, 0.5, 99.95, crop_roi
     )
     height, width = expected_shape
@@ -450,7 +708,7 @@ def make_video(
     )
     video_description = "Original video" if crop_roi is None else "Cropped video"
     summary = (
-        f"Original video: {len(numbered_paths)} {width}x{height} .TIFF frames at {recording_frame_rate:g} fps.\n"
+        f"{video_description}: {len(numbered_paths)} .TIFF images ({width}x{height}) at {recording_frame_rate:g} fps.\n"
         f"Create an H.264 MP4 video that plays back at {frame_rate:g} fps "
         f"({duration_s:.3f} s){destination_text}?"
     )
@@ -531,10 +789,24 @@ def make_video(
             total=len(numbered_paths),
             desc="Encoding video",
         ):
+            frame = _validate_frame(loaded, frame_path, source_shape)
             frame = _crop_frame(frame, crop_roi)
+            frame = _validate_frame(frame, frame_path, expected_shape)
+            frame = _auto_brightness(frame, limits=contrast_limits)
             label = _format_time(
-                frame_number, recording_frame_rate, time_label_unit)
-            frame = _add_time_label(frame, label)
+                frame_number,
+                recording_frame_rate,
+                time_label_unit,
+                first_frame_number,
+            )
+            frame = _add_time_label(
+                frame,
+                label,
+                font=label_font,
+                color=label_gray,
+                location=label_anchor,
+                font_size_px=label_font_size_px,
+            )
             process.stdin.write(np.ascontiguousarray(frame).tobytes())
 
         # Signal the end of raw video input, collect FFmpeg's result, and only
@@ -581,9 +853,10 @@ def make_video(
     # replacing an existing file.
     if final_path.exists():
         if not confirm:
-            raise FileExistsError(f"Output video already exists: {final_path}")
+            raise FileExistsError(
+                f"Output video  already exists: {final_path}")
         if not prompt_yes_no(
-            f"Overwrite existing video {final_path}?", default=False
+            f"Overwrite existing video {final_path}? Press ENTER to cancel.", default=False
         ):
             print(f"Video left at {temp_video_path}")
             return temp_video_path
@@ -596,4 +869,6 @@ def make_video(
 
 
 if __name__ == "__main__":
-    make_video(time_stretch_s_per_s=0.002, frames_range=(1, 100))
+    make_video(frames_dir="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec",
+               time_stretch_s_per_s=0.002, crop_roi=(8, 0, 0, 0),
+               frames_range=(1, 100), show_preview=True, label_font_style="bold")

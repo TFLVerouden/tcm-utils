@@ -215,14 +215,64 @@ def _validate_frame(
     return image
 
 
+def _crop_frame(
+    image: np.ndarray,
+    roi: tuple[int, int, int, int] | None,
+) -> np.ndarray:
+    """Crop one grayscale frame using (y_start, y_end, x_start, x_end)."""
+    if roi is None:
+        return image
+    if (
+        not isinstance(roi, tuple)
+        or len(roi) != 4
+        or any(
+            isinstance(value, bool) or not isinstance(value, (int, np.integer))
+            for value in roi
+        )
+    ):
+        raise ValueError(
+            "roi must be a tuple of four integers "
+            "(y_start, y_end, x_start, x_end)"
+        )
+
+    height, width = image.shape
+    y_start, y_end, x_start, x_end = (int(value) for value in roi)
+    if y_start < 0:
+        y_start += height
+    if x_start < 0:
+        x_start += width
+    if y_end == 0:
+        y_end = height
+    elif y_end < 0:
+        y_end += height
+    if x_end == 0:
+        x_end = width
+    elif x_end < 0:
+        x_end += width
+
+    if not (
+        0 <= y_start < height
+        and 0 <= y_end <= height
+        and 0 <= x_start < width
+        and 0 <= x_end <= width
+    ):
+        raise ValueError(
+            "roi coordinates are out of bounds of the image dimensions")
+    if y_end <= y_start or x_end <= x_start:
+        raise ValueError("roi must select a non-empty image region")
+    return image[y_start:y_end, x_start:x_end]
+
+
 def _sequence_contrast_limits(
     numbered_paths: list[tuple[int, Path]],
     n_jobs: int | None,
     low_percentile: float,
     high_percentile: float,
-) -> tuple[tuple[int, int], tuple[float, float]]:
+    roi: tuple[int, int, int, int] | None,
+) -> tuple[tuple[int, int], tuple[int, int], tuple[float, float]]:
     histogram = np.zeros(65_536, dtype=np.uint64)
-    expected_shape: tuple[int, int] | None = None
+    source_shape: tuple[int, int] | None = None
+    cropped_shape: tuple[int, int] | None = None
 
     for _, path, loaded in tqdm(
         _iter_loaded_frames(numbered_paths, n_jobs),
@@ -230,9 +280,12 @@ def _sequence_contrast_limits(
         desc="Analyzing TIFF frames",
         leave=False,
     ):
-        image = _validate_frame(loaded, path, expected_shape)
-        if expected_shape is None:
-            expected_shape = image.shape
+        image = _validate_frame(loaded, path, source_shape)
+        if source_shape is None:
+            source_shape = image.shape
+        image = _crop_frame(image, roi)
+        if cropped_shape is None:
+            cropped_shape = image.shape
         counts = np.bincount(
             image.reshape(-1).astype(np.int64), minlength=65_536)
         histogram += counts.astype(np.uint64, copy=False)
@@ -245,8 +298,8 @@ def _sequence_contrast_limits(
     high_limit = float(
         np.searchsorted(cumulative, high_percentile * total_pixels / 100)
     )
-    assert expected_shape is not None
-    return expected_shape, (low_limit, high_limit)
+    assert source_shape is not None and cropped_shape is not None
+    return source_shape, cropped_shape, (low_limit, high_limit)
 
 
 def auto_brightness(
@@ -303,6 +356,7 @@ def make_video(
     recording_frame_rate: float | None = None,
     n_jobs: int | None = None,
     confirm: bool = True,
+    crop_roi: tuple[int, int, int, int] | None = None,
 ) -> Path | None:
     """Encode numbered grayscale TIFF frames as an H.264 MP4.
 
@@ -314,8 +368,11 @@ def make_video(
     by the recording rate. The video is always encoded into ``<repo>/.temp``
     first and then moved to ``output_path``; when ``output_path`` is None, a
     folder picker is shown afterwards (cancelling leaves the video in .temp).
-    TODO: confirm whether frame numbering is zero- or
-    one-based; currently frame 1 is labeled as 1 / recording rate.
+    ``crop_roi`` optionally crops every frame before preview and encoding, using
+    ``(y_start, y_end, x_start, x_end)`` coordinates. Negative coordinates are
+    offsets from the corresponding image edge, and zero end coordinates mean
+    the full extent in that direction.
+    With ``confirm=True`` (the default), ``show_preview=True`` displays the
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
@@ -375,7 +432,7 @@ def make_video(
     # Inspect the sequence once to ensure all frames have matching dimensions
     # and to calculate one shared contrast range, preventing brightness flicker.
     expected_shape, contrast_limits = _sequence_contrast_limits(
-        numbered_paths, n_jobs, 0.5, 99.95
+        numbered_paths, n_jobs, 0.5, 99.95, crop_roi
     )
     height, width = expected_shape
     # The selected H.264 pixel format requires even dimensions, so fail rather
@@ -391,6 +448,7 @@ def make_video(
     destination_text = (
         ", saved to " + str(final_path) if final_path else ""
     )
+    video_description = "Original video" if crop_roi is None else "Cropped video"
     summary = (
         f"Original video: {len(numbered_paths)} {width}x{height} .TIFF frames at {recording_frame_rate:g} fps.\n"
         f"Create an H.264 MP4 video that plays back at {frame_rate:g} fps "
@@ -473,8 +531,7 @@ def make_video(
             total=len(numbered_paths),
             desc="Encoding video",
         ):
-            frame = _validate_frame(loaded, frame_path, expected_shape)
-            frame = auto_brightness(frame, limits=contrast_limits)
+            frame = _crop_frame(frame, crop_roi)
             label = _format_time(
                 frame_number, recording_frame_rate, time_label_unit)
             frame = _add_time_label(frame, label)

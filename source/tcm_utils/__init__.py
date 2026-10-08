@@ -17,6 +17,7 @@ __all__ = [
     "cvd_check",
     "io_utils",
     "plot_style",
+    "scientific_cmaps",
     "tif_utils",
     "time_utils",
     "video_maker",

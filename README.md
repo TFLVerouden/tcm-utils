@@ -4,6 +4,27 @@ Twente Cough Machine - utilities
 How to install local editable version?
 pip install -e ../tcm-utils
 
+## Scientific colormaps
+
+Importing `tcm_utils.scientific_cmaps` sets Matplotlib's default image
+colormap to cmcrameri's `batlow` and its categorical version as the axes color
+cycle. A plain `import tcm_utils` leaves Matplotlib settings unchanged. Select
+another map with a categorical `S` variant using `set_scientific_colormap`; for
+example:
+
+```python
+from tcm_utils.scientific_cmaps import get_color, set_scientific_colormap
+
+colors = set_scientific_colormap("davos")
+line_color = get_color(2)
+```
+
+The selected continuous map is used by plots such as `imshow` when no `cmap`
+is specified. `get_color` uses zero-based indexing and wraps after the end of
+the categorical palette. See cmcrameri's [Extra instructions](https://pypi.org/project/cmcrameri/)
+for available map names and their categorical variants. Choosing a valid map
+without an `S` variant raises `ValueError`.
+
 ## TIFF video export
 
 `tcm_utils.video_maker.make_video` converts individually numbered grayscale TIFF

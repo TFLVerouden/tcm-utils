@@ -9,6 +9,7 @@ description = "Shared utilities for Twente Cough Machine projects"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "cmcrameri",
     "daltonlens",
     "matplotlib>=3.5",
     "numpy>=1.21",

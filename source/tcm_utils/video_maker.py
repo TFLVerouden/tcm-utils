@@ -13,7 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from typing import Iterator, Protocol, runtime_checkable
+from typing import Iterator, Protocol
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -67,20 +67,6 @@ class FrameProcessor(Protocol):
 
     def finish(self, video_path: Path) -> None:
         """Persist any processor output beside the completed video."""
-        ...
-
-
-@runtime_checkable
-class VideoContextProcessor(Protocol):
-    """Optional capability for processors that need video metadata."""
-
-    def set_video_context(
-        self,
-        *,
-        recording_frame_rate: float,
-        scale_m_per_px: float | None,
-    ) -> None:
-        """Provide metadata resolved by ``make_video`` before processing."""
         ...
 
 
@@ -1006,11 +992,11 @@ def make_video(
             ``False``. A processor is called serially and must implement
             ``finish(video_path)`` to save any results after the video is
             delivered. A processor may also implement
-            ``set_video_context(*, recording_frame_rate, scale_m_per_px)`` to
-            receive the resolved recording rate and calibration scale before
-            preview or frame processing. The scale is ``None`` when no
-            calibration was loaded. ``video_path`` is the path returned by
-            this function.
+            ``set_video_context(**context)`` to receive extra resolved video
+            values before preview or frame processing, including
+            ``recording_frame_rate``, ``scale_m_per_px``, and ``time_offset_s``.
+            The scale is ``None`` when no calibration was loaded. ``video_path``
+            is the path returned by this function.
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
@@ -1197,10 +1183,17 @@ def make_video(
     frame_rate = output_frame_rate or recording_frame_rate * stretch
     frame_rate_text = format(frame_rate, ".12g")
 
-    if isinstance(processor, VideoContextProcessor):
-        processor.set_video_context(
+    context_setter = (
+        getattr(processor, "set_video_context", None)
+        if processor is not None
+        else None
+    )
+    if callable(context_setter):
+        context_setter(
             recording_frame_rate=recording_frame_rate,
             scale_m_per_px=scale_m_per_px,
+            first_frame_number=first_frame_number,
+            time_offset_s=time_offset_s,
         )
 
     # The video is always encoded into the repo's .temp folder first. The final

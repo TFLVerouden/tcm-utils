@@ -147,6 +147,8 @@ class EllipseSizer(FrameProcessor):
         )
         self.scale_m_per_px: float | None = None
         self.recording_frame_rate: float | None = None
+        self.first_frame_number = 0
+        self.time_offset_s = 0.0
         self.roi = roi
         self.polarity = polarity
         self.threshold_value = threshold_value
@@ -156,12 +158,8 @@ class EllipseSizer(FrameProcessor):
         self.measurements: list[EllipseMeasurement] = []
         self.csv_path: Path | None = None
 
-    def set_video_context(
-        self,
-        *,
-        recording_frame_rate: float,
-        scale_m_per_px: float | None,
-    ) -> None:
+    def set_video_context(self, **context: object) -> None:
+        recording_frame_rate = context.get("recording_frame_rate")
         if (
             isinstance(recording_frame_rate, bool)
             or not isinstance(recording_frame_rate, (int, float))
@@ -169,8 +167,9 @@ class EllipseSizer(FrameProcessor):
             or recording_frame_rate <= 0
         ):
             raise ValueError(
-                "recording_frame_rate must be positive and finite"
+                "EllipseSizer requires a positive finite recording_frame_rate"
             )
+        scale_m_per_px = context.get("scale_m_per_px")
         if (
             isinstance(scale_m_per_px, bool)
             or not isinstance(scale_m_per_px, (int, float))
@@ -178,11 +177,32 @@ class EllipseSizer(FrameProcessor):
             or scale_m_per_px <= 0
         ):
             raise ValueError(
-                "EllipseSizer requires a positive finite calibration "
-                "scale_m_per_px; pass scale_bar_calibration_path to make_video"
+                "EllipseSizer requires a positive finite scale_m_per_px"
             )
+        first_frame_number = context.get("first_frame_number")
+        if (
+            isinstance(first_frame_number, bool)
+            or not isinstance(first_frame_number, int)
+        ):
+            raise ValueError(
+                "EllipseSizer requires an integer first_frame_number"
+            )
+        time_offset_s = context.get("time_offset_s")
+        if time_offset_s is None:
+            time_offset_s = 0.0
+        elif (
+            isinstance(time_offset_s, bool)
+            or not isinstance(time_offset_s, (int, float))
+            or not math.isfinite(time_offset_s)
+        ):
+            raise ValueError(
+                "EllipseSizer requires a finite time_offset_s or None"
+            )
+
         self.recording_frame_rate = float(recording_frame_rate)
         self.scale_m_per_px = float(scale_m_per_px)
+        self.first_frame_number = first_frame_number
+        self.time_offset_s = float(time_offset_s)
 
     def _resolve_roi(
         self,
@@ -229,6 +249,11 @@ class EllipseSizer(FrameProcessor):
                 "EllipseSizer must receive video metadata from make_video "
                 "before processing frames"
             )
+        time_ms = (
+            (frame_number - self.first_frame_number)
+            / self.recording_frame_rate
+            + self.time_offset_s
+        ) * 1000
         y_start, y_end, x_start, x_end = self._resolve_roi(frame.shape)
         roi_frame = frame[y_start:y_end, x_start:x_end]
         threshold_type = (
@@ -266,7 +291,7 @@ class EllipseSizer(FrameProcessor):
                 EllipseMeasurement(
                     frame_number=frame_number,
                     detected=False,
-                    time_ms=frame_number * 1000 / self.recording_frame_rate,
+                    time_ms=time_ms,
                 ),
                 None,
             )
@@ -306,7 +331,7 @@ class EllipseSizer(FrameProcessor):
         measurement = EllipseMeasurement(
             frame_number=frame_number,
             detected=True,
-            time_ms=frame_number * 1000 / self.recording_frame_rate,
+            time_ms=time_ms,
             center_x_px=center_x,
             center_y_px=center_y,
             center_x_m=center_x * self.scale_m_per_px,

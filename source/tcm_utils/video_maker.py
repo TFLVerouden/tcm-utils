@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from typing import Iterator
+from typing import Iterator, Protocol, runtime_checkable
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -49,6 +49,77 @@ _LENGTH_FACTORS_M = {
     "µm": 0.000001,
     "nm": 0.000000001,
 }
+
+
+class FrameProcessor(Protocol):
+    """Transform frames and save processor results alongside the output video."""
+
+    def process_frame(
+        self,
+        frame: np.ndarray,
+        frame_number: int,
+        *,
+        is_preview: bool,
+    ) -> np.ndarray:
+        """Process a frame and return its same-sized grayscale image."""
+        ...
+
+    def finish(self, video_path: Path) -> None:
+        """Persist any processor output beside the completed video."""
+        ...
+
+
+@runtime_checkable
+class VideoContextProcessor(Protocol):
+    """Optional capability for processors that need video metadata."""
+
+    def set_video_context(
+        self,
+        *,
+        recording_frame_rate: float,
+        scale_m_per_px: float | None,
+    ) -> None:
+        """Provide metadata resolved by ``make_video`` before processing."""
+        ...
+
+
+def _process_frame(
+    frame: np.ndarray,
+    frame_number: int,
+    processor: FrameProcessor | None,
+    *,
+    is_preview: bool,
+) -> np.ndarray:
+    if processor is None:
+        return frame
+
+    processed = processor.process_frame(
+        frame,
+        frame_number,
+        is_preview=is_preview,
+    )
+    if not isinstance(processed, np.ndarray):
+        raise TypeError("frame processor must return a NumPy array")
+    if (
+        processed.ndim != 2
+        or processed.dtype != np.uint8
+        or processed.shape != frame.shape
+    ):
+        raise ValueError(
+            "frame processor must return a same-sized 8-bit grayscale image"
+        )
+    return processed
+
+
+def _finish_frame_processor(
+    processor: FrameProcessor | None,
+    video_path: Path,
+) -> Path:
+    if processor is not None:
+        processor.finish(video_path)
+    return video_path
+
+
 _LABEL_LOCATIONS = {
     "upper left": (0.0, 0.0),
     "upper center": (0.5, 0.0),
@@ -690,6 +761,8 @@ def _show_frame_preview(
     frame_path: Path,
     label: str,
     *,
+    frame_number: int,
+    processor: FrameProcessor | None,
     font: ImageFont.FreeTypeFont,
     color: int,
     stroke_color: int | None,
@@ -704,8 +777,14 @@ def _show_frame_preview(
 ) -> bool:
     """Display one prepared frame so the user can review its appearance."""
     # Build the preview with the same overlay and contrast operation as output.
-    preview = _add_frame_labels(
+    preview_frame = _process_frame(
         auto_brightness(image, percentile_stretch=True),
+        frame_number,
+        processor,
+        is_preview=True,
+    )
+    preview = _add_frame_labels(
+        preview_frame,
         label,
         font=font,
         color=color,
@@ -792,6 +871,7 @@ def make_video(
     output_filename: str | Path | None = None,
     confirm: bool = True,
     show_preview: bool = True,
+    processor: FrameProcessor | None = None,
 ) -> Path | None:
     """Encode numbered grayscale TIFF frames as an H.264 MP4.
 
@@ -869,6 +949,19 @@ def make_video(
             timestamp and a per-frame contrast stretch before sequence-wide
             contrast analysis. The preview is shown only when ``confirm`` is
             true.
+        processor: Optional object with a ``process_frame(frame,
+            frame_number, *, is_preview)`` method. It receives each
+            brightness-normalized 8-bit grayscale frame before labels are
+            drawn and must return a same-sized 8-bit grayscale NumPy array.
+            The preview is marked with ``is_preview=True``; encoded frames use
+            ``False``. A processor is called serially and must implement
+            ``finish(video_path)`` to save any results after the video is
+            delivered. A processor may also implement
+            ``set_video_context(*, recording_frame_rate, scale_m_per_px)`` to
+            receive the resolved recording rate and calibration scale before
+            preview or frame processing. The scale is ``None`` when no
+            calibration was loaded. ``video_path`` is the path returned by
+            this function.
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
@@ -978,6 +1071,7 @@ def make_video(
         )
     label_anchor = _resolve_label_location(label_location)
     scale_bar_config: tuple[str, int, tuple[float, float]] | None = None
+    scale_m_per_px: float | None = None
     if scale_bar_enabled:
         calibration_path = ensure_calibration(
             input_path=(
@@ -1040,6 +1134,12 @@ def make_video(
     frame_rate = output_frame_rate or recording_frame_rate * stretch
     frame_rate_text = format(frame_rate, ".12g")
 
+    if isinstance(processor, VideoContextProcessor):
+        processor.set_video_context(
+            recording_frame_rate=recording_frame_rate,
+            scale_m_per_px=scale_m_per_px,
+        )
+
     # The video is always encoded into the repo's .temp folder first. The final
     # destination is the caller's output_path, or (when None) a folder the user
     # is asked to pick once encoding has finished. This function writes H.264
@@ -1087,8 +1187,8 @@ def make_video(
     if confirm and show_preview:
         preview_number, preview_path = numbered_paths[0]
         preview_image = _validate_frame(load_image(preview_path), preview_path)
-        preview_image = _crop_frame(preview_image, crop_roi)
         preview_image = _flip_frame(preview_image, flip)
+        preview_image = _crop_frame(preview_image, crop_roi)
         if preview_image.shape[0] % 2 or preview_image.shape[1] % 2:
             raise ValueError(
                 "H.264 4:2:0 requires even frame dimensions; "
@@ -1109,6 +1209,8 @@ def make_video(
             preview_image,
             preview_path,
             preview_label,
+            frame_number=preview_number,
+            processor=processor,
             font=label_font,
             color=label_gray,
             stroke_color=stroke_gray,
@@ -1228,13 +1330,19 @@ def make_video(
             desc="Encoding video",
         ):
             frame = _validate_frame(loaded, frame_path, source_shape)
+            frame = _flip_frame(frame, flip)
             frame = _crop_frame(frame, crop_roi)
             frame = _validate_frame(frame, frame_path, expected_shape)
-            frame = _flip_frame(frame, flip)
             frame = auto_brightness(
                 frame,
                 percentile_stretch=True,
                 limits=contrast_limits,
+            )
+            frame = _process_frame(
+                frame,
+                frame_number,
+                processor,
+                is_preview=False,
             )
             label = _format_time(
                 frame_number,
@@ -1295,7 +1403,7 @@ def make_video(
         )
         if not chosen_dir:
             print(f"No folder selected. Video left at {temp_video_path}")
-            return temp_video_path
+            return _finish_frame_processor(processor, temp_video_path)
         final_path = Path(chosen_dir).expanduser(
         ).resolve() / temp_video_path.name
 
@@ -1309,19 +1417,34 @@ def make_video(
             f"Overwrite existing video {final_path}? Press ENTER to cancel.", default=False
         ):
             print(f"Video left at {temp_video_path}")
-            return temp_video_path
+            return _finish_frame_processor(processor, temp_video_path)
     final_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(temp_video_path), str(final_path))
 
     # Report and return the final video path for convenient programmatic use.
     print(f"Video saved to {final_path}")
-    return final_path
+    return _finish_frame_processor(processor, final_path)
 
 
 if __name__ == "__main__":
-    make_video(
-        frames_dir="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec",
-        scale_bar_calibration_path="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/calibration/calibration_1mmspacing_afternewtubing_C001H001S0002_260507_132953_metadata.json",
+    from tcm_utils.video_analysis import EllipseSizer, process_ellipse_data
+
+    frames_dir = Path(
+        "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec"
+    )
+    calibration_path = Path(
+        "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/calibration/calibration_1mmspacing_afternewtubing_C001H001S0002_260507_132953_metadata.json"
+    )
+    ellipse_sizer = EllipseSizer(
+        polarity="dark",
+        roi=(20, 350, 560, 680),
+        outline_color=255,
+        outline_thickness=2,
+        frame_range=(0, 228),
+    )
+    video_path = make_video(
+        frames_dir=frames_dir,
+        scale_bar_calibration_path=calibration_path,
         time_stretch_s_per_s=0.002,
         flip="horizontal",
         crop_roi=(10, 0, 0, 0),
@@ -1330,5 +1453,8 @@ if __name__ == "__main__":
         scale_bar_length=5,
         scale_bar_unit="mm",
         label_location_offset=(0, 0),
-        show_preview=True,
+        show_preview=False,
+        processor=ellipse_sizer,
     )
+    if video_path is not None and ellipse_sizer.csv_path is not None:
+        process_ellipse_data(ellipse_sizer.csv_path)

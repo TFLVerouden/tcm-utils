@@ -382,6 +382,17 @@ def _crop_frame(
     return image[y_start:y_end, x_start:x_end]
 
 
+def _rotate_frame(
+        image: np.ndarray,
+        angle: int | None,
+) -> np.ndarray:
+    if angle is None:
+        return image
+    if angle not in (90, 180, 270):
+        raise ValueError("angle must be 90, 180, 270, or None")
+    return np.rot90(image, k=angle // 90)
+
+
 def _flip_frame(
     image: np.ndarray,
     flip: str | None,
@@ -403,6 +414,8 @@ def _sequence_contrast_limits(
     low_percentile: float,
     high_percentile: float,
     roi: tuple[int, int, int, int] | None,
+    rotate_deg: int | None = None,
+    flip: str | None = None,
 ) -> tuple[tuple[int, int], tuple[int, int], tuple[float, float]]:
     histogram = np.zeros(65_536, dtype=np.uint64)
     source_shape: tuple[int, int] | None = None
@@ -417,6 +430,8 @@ def _sequence_contrast_limits(
         image = _validate_frame(loaded, path, source_shape)
         if source_shape is None:
             source_shape = image.shape
+        image = _rotate_frame(image, angle=rotate_deg)
+        image = _flip_frame(image, flip)
         image = _crop_frame(image, roi)
         if cropped_shape is None:
             cropped_shape = image.shape
@@ -874,6 +889,7 @@ def make_video(
     output_frame_rate: float | None = None,
     time_label_unit: str = "ms",
     crop_roi: tuple[int, int, int, int] | None = None,
+    rotate_deg: int | None = None,
     flip: str | None = None,
     n_jobs: int | None = None,
     label_font_path: str | Path | None = None,
@@ -921,8 +937,10 @@ def make_video(
             ``(y_start, y_end, x_start, x_end)``. Negative coordinates are
             offsets from the corresponding image edge; zero end coordinates
             mean the full extent in that direction.
+        rotate_deg: Optional frame rotation in degrees: ``90``, ``180``,
+            or ``270``.
         flip: Optional frame flip: ``"vertical"``, ``"horizontal"``, or
-            ``"both"``. Flips are applied after cropping and before labels.
+            ``"both"``. Flips are applied after rotation and before cropping.
         n_jobs: Number of TIFF-loading workers, or ``None`` to choose a
             default.
         label_font_path: Optional TrueType/OpenType font file. By default, the
@@ -1012,6 +1030,8 @@ def make_video(
     if flip not in (None, "vertical", "horizontal", "both"):
         raise ValueError(
             "flip must be 'vertical', 'horizontal', 'both', or None")
+    if rotate_deg not in (None, 90, 180, 270):
+        raise ValueError("rotate_deg must be 90, 180, 270, or None")
     label_offset = _resolve_label_location_offset(
         label_location_offset,
         "label_location_offset",
@@ -1223,6 +1243,7 @@ def make_video(
     if confirm and show_preview:
         preview_number, preview_path = numbered_paths[0]
         preview_image = _validate_frame(load_image(preview_path), preview_path)
+        preview_image = _rotate_frame(preview_image, angle=rotate_deg)
         preview_image = _flip_frame(preview_image, flip)
         preview_image = _crop_frame(preview_image, crop_roi)
         if preview_image.shape[0] % 2 or preview_image.shape[1] % 2:
@@ -1264,7 +1285,13 @@ def make_video(
     # Inspect the sequence once to ensure all frames have matching dimensions
     # and to calculate one shared contrast range, preventing brightness flicker.
     source_shape, expected_shape, contrast_limits = _sequence_contrast_limits(
-        numbered_paths, n_jobs, 0.5, 99.95, crop_roi
+        numbered_paths,
+        n_jobs,
+        0.5,
+        99.95,
+        crop_roi,
+        rotate_deg=rotate_deg,
+        flip=flip,
     )
     height, width = expected_shape
     # The selected H.264 pixel format requires even dimensions, so fail rather
@@ -1281,6 +1308,8 @@ def make_video(
         ", saved to " + str(final_path) if final_path else ""
     )
     video_description = "Original video" if crop_roi is None else "Cropped video"
+    if rotate_deg is not None:
+        video_description += f" rotated {rotate_deg}°"
     if flip is not None:
         video_description += f" with {flip} flip"
     summary = (
@@ -1366,6 +1395,7 @@ def make_video(
             desc="Encoding video",
         ):
             frame = _validate_frame(loaded, frame_path, source_shape)
+            frame = _rotate_frame(frame, angle=rotate_deg)
             frame = _flip_frame(frame, flip)
             frame = _crop_frame(frame, crop_roi)
             frame = _validate_frame(frame, frame_path, expected_shape)

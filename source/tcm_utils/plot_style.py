@@ -225,6 +225,7 @@ def set_grid(
     on: bool = True,
     which: str = "major",
     zorder: float = 0,
+    zero_continuous_linestyle: bool = True,
     **grid_kwargs,
 ) -> None:
     """Grid helper with horizontal/vertical/both modes.
@@ -234,11 +235,20 @@ def set_grid(
     - both       => both axes
     - none       => no grid
 
+    Gridlines at zero are solid while retaining the grid's color and alpha.
     Always forces gridlines to a low z-order.
 
     Extra keyword arguments are forwarded to ``ax.grid`` so callers can use
     regular Matplotlib styling options (e.g. color, alpha, linestyle).
     """
+
+    # # If no alpha value is specified in the grid_kwargs, default to 0.5
+    # if "alpha" not in grid_kwargs:
+    #     grid_kwargs["alpha"] = 0.5
+
+    # If no linestyle is specified in the grid_kwargs, default to dotted
+    if "linestyle" not in grid_kwargs:
+        grid_kwargs["linestyle"] = ":"
 
     ax.set_axisbelow(True)
 
@@ -255,6 +265,27 @@ def set_grid(
     else:
         raise ValueError(
             "mode must be one of: none, horizontal, vertical, both")
+
+    if on and mode != "none":
+        grid_axes = []
+        if mode in ("vertical", "both"):
+            grid_axes.append(ax.xaxis)
+        if mode in ("horizontal", "both"):
+            grid_axes.append(ax.yaxis)
+
+        for axis in grid_axes:
+            if which in ("major", "both"):
+                for location, tick in zip(
+                    axis.get_majorticklocs(), axis.get_major_ticks()
+                ):
+                    if location == 0 and zero_continuous_linestyle:
+                        tick.gridline.set_linestyle("-")
+            if which in ("minor", "both"):
+                for location, tick in zip(
+                    axis.get_minorticklocs(), axis.get_minor_ticks()
+                ):
+                    if location == 0 and zero_continuous_linestyle:
+                        tick.gridline.set_linestyle("-")
 
     for gl in ax.get_xgridlines() + ax.get_ygridlines():
         gl.set_zorder(zorder)

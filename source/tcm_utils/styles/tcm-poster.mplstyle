@@ -57,7 +57,7 @@ lines.solid_capstyle: round
 
 # --- Grid (off by default; enable per-axis with ax.grid(..., axis='y')) ---
 axes.grid: False
-grid.color: 0.75
+grid.color: 0.8
 grid.linewidth: 2.2
 grid.linestyle: --
 

@@ -12,6 +12,7 @@ import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
 
+from tcm_utils.scientific_cmaps import get_color
 from tcm_utils.video_maker import FrameProcessor
 from tcm_utils.plot_style import use_tcm_poster_style, append_unit_to_last_ticklabel, set_grid
 from tcm_utils.io_utils import pdf_to_png
@@ -371,7 +372,7 @@ def process_ellipse_data(
     output_path: str | Path | None = None,
 ) -> Path:
     """Plot projected ellipse area in square micrometres against time."""
-    use_tcm_poster_style()
+    use_tcm_poster_style(paper_mode=True)
     csv_path = Path(csv_path)
     if output_path is None:
         output_path = csv_path.with_name(
@@ -402,30 +403,41 @@ def process_ellipse_data(
         for row in rows
     ])
 
-    figure, axis = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
-    axis[0].plot(time_ms, radius_major_m * 1e3, marker=".", label="Major axis")
-    axis[0].plot(time_ms, radius_minor_m * 1e3, marker=".", label="Minor axis")
-    axis[0].legend()
-    # axis[0].set_xlabel("Time (ms)")
-    axis[0].xaxis.set_tick_params(labelbottom=False)
-    axis[0].set_ylabel("Radius (mm)")
-    axis[0].set_title("Falling droplet")
-    # axis[0].grid(True, alpha=0.3)
+    circle_of_equal_area_radius_m = np.sqrt(area_um2 / math.pi) * 1e-6
+    mean_radius = np.mean(
+        circle_of_equal_area_radius_m[np.isfinite(circle_of_equal_area_radius_m)])
 
-    axis[1].plot(time_ms, area_um2 / 1e6, marker=".")
-    append_unit_to_last_ticklabel(axis[1], axis="x", unit="ms")
-    axis[1].set_ylabel("Projected area (mm²)")
-    # axis[1].set_title("Droplet projected area")
-    # axis[1].grid(True, alpha=0.3)
+    figure, axis = plt.subplots()
+    axis.plot(time_ms, radius_major_m * 1e3, label="Major axis")
+    axis.plot(time_ms, radius_minor_m * 1e3, label="Minor axis")
+    axis.plot(time_ms, circle_of_equal_area_radius_m *
+              1e3, label="Circle of equal area")
+    axis.axhline(mean_radius * 1e3, color=get_color(2),
+                 linestyle="--", label=f"Mean: {mean_radius*1e3:.2f} mm")
 
-    set_grid(axis[0], mode="both")
-    set_grid(axis[1], mode="both")
+    axis.legend(loc="lower center", ncol=2)
+    # ncol=axis.get_legend_handles_labels()[0].__len__())
+    # axis.set_xlabel("Time (ms)")
+    # axis.xaxis.set_tick_params(labelbottom=False)
+    axis.set_ylabel("Radius (mm)")
+    axis.set_title("Falling droplet")
+    append_unit_to_last_ticklabel(axis, axis="x", unit="ms")
 
+    # axis[1].plot(time_ms, area_um2 / 1e6)
+    # axis[1].set_ylabel("Ellipse area (mm²)")
+
+    # # CHange y tick format to 2 digits after decimal
+    # axis[1].yaxis.set_major_formatter(
+    #     plt.FuncFormatter(lambda x, _: f"{x:.2f}"))
+
+    set_grid(axis, mode="both")
+    # set_grid(axis[1], mode="both")
+    axis.set_ylim((1.1, 1.4))
     figure.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output_path, dpi=160)
-    # plt.close(figure)
-    plt.show()
+    plt.close(figure)
+    # plt.show()
     pdf_to_png(output_path, dpi=160)
     return output_path
 

@@ -1453,7 +1453,7 @@ if __name__ == "__main__":
         scale_bar_length=5,
         scale_bar_unit="mm",
         label_location_offset=(0, 0),
-        show_preview=False,
+        show_preview=True,
         processor=ellipse_sizer,
     )
     if video_path is not None and ellipse_sizer.csv_path is not None:

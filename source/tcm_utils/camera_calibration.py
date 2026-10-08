@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from tcm_utils.file_dialogs import ask_directory, ask_open_file, find_repo_root
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 from tcm_utils.io_utils import (
+    auto_brightness,
     load_image,
     path_relative_to,
     save_metadata_json,
@@ -19,33 +20,6 @@ from tcm_utils.io_utils import (
     ensure_processed_artifact,
     prompt_input,
 )
-
-
-def auto_brightness(
-    image: np.ndarray,
-    min_contrast: float = 40.0,
-    target_brightness: float = 128.0,
-) -> np.ndarray:
-    """Brighten a low-contrast image while preserving usable images unchanged.
-
-    Contrast is measured as the intensity distance between the 2nd and 98th
-    percentiles, which limits the influence of isolated bright or dark pixels.
-    """
-    if not 0 < min_contrast <= 255:
-        raise ValueError("min_contrast must be in the range (0, 255]")
-    if not 0 <= target_brightness <= 255:
-        raise ValueError("target_brightness must be in the range [0, 255]")
-
-    low, high = np.percentile(image, (2, 98))
-    contrast = float(high - low)
-    if contrast == 0 or contrast >= min_contrast:
-        return image
-
-    print(f"Auto-brightening image: contrast {contrast:.2f} < {min_contrast}, "
-          f"mean {np.mean(image):.2f} -> target {target_brightness}")
-    scale = min_contrast / contrast
-    offset = target_brightness - scale * float(np.mean(image))
-    return cv.convertScaleAbs(image, alpha=scale, beta=offset)
 
 
 def detect_circle_centers(
@@ -131,7 +105,18 @@ def _select_roi_colored(img_gray: np.ndarray, color=(255, 0, 255)) -> tuple[int,
     Auto-confirms on mouse release. ESC cancels.
     Returns (x, y, w, h); (0,0,0,0) if cancelled.
     """
-    display = cv.cvtColor(img_gray, cv.COLOR_GRAY2BGR)
+    if img_gray.dtype == np.uint16:
+        image_max = (
+            4095
+            if int(np.max(img_gray)) <= 4095
+            else np.iinfo(img_gray.dtype).max
+        )
+        display_gray = np.rint(
+            np.clip(img_gray.astype(np.float64) * (255 / image_max), 0, 255)
+        ).astype(np.uint8)
+    else:
+        display_gray = img_gray
+    display = cv.cvtColor(display_gray, cv.COLOR_GRAY2BGR)
     drawing = False
     finished = False
     start_pt = (0, 0)
@@ -423,7 +408,11 @@ def run_calibration(
     roi: tuple[int, int, int, int] | None = None,
 ) -> float:
     repo_root = find_repo_root(Path(__file__))
-    output_folder = repo_root / ".temp"
+    output_folder = (
+        Path(output_dir).expanduser().resolve()
+        if output_dir is not None
+        else repo_root / ".temp" / "calibration"
+    )
     output_folder.mkdir(parents=True, exist_ok=True)
 
     # Select input image
@@ -448,6 +437,7 @@ def run_calibration(
     data_file = Path(data_file).expanduser().resolve()
     if not data_file.exists():
         raise FileNotFoundError(f"Input file not found: {data_file}")
+    loaded_image_path = data_file
 
     # Load image
     img = load_image(data_file)
@@ -555,22 +545,6 @@ def run_calibration(
         timestamp = timestamp_str()
         timestamp_source_description = "current_time"
 
-    if output_dir is not None:
-        output_folder = Path(output_dir).expanduser().resolve()
-    else:
-        selected_output_dir = ask_directory(
-            key="camera_calibration_output",
-            title="Select output directory for calibration results",
-            default_dir=data_file.parent,
-            start=Path(__file__),
-        )
-        if selected_output_dir is None:
-            print("Calibration cancelled: no output directory selected.")
-            return 1
-        output_folder = selected_output_dir
-
-    output_folder.mkdir(parents=True, exist_ok=True)
-
     # Outputs
     output_plot = output_folder / create_timestamped_filename(
         base_filename, timestamp, "calibration_plot", "pdf"
@@ -633,9 +607,7 @@ def run_calibration(
     )
     save_metadata_json(metadata, metadata_path)
 
-    if output_dir is not None:
-        final_output_folder = Path(output_dir).expanduser().resolve()
-    else:
+    if output_dir is None:
         final_output_folder = ask_directory(
             key="camera_calibration_output",
             title="Select calibration output directory",
@@ -645,28 +617,36 @@ def run_calibration(
         if final_output_folder is None:
             print(f"Outputs remain in {output_folder}")
             return mm_per_px
+    else:
+        final_output_folder = output_folder
 
     final_output_folder.mkdir(parents=True, exist_ok=True)
-    final_raw_folder = final_output_folder / "raw_data"
-    final_raw_folder.mkdir(parents=True, exist_ok=True)
-    final_raw_path = final_raw_folder / moved_raw.name
+    if final_output_folder.resolve() != output_folder.resolve():
+        final_raw_folder = final_output_folder / "raw_data"
+        final_raw_folder.mkdir(parents=True, exist_ok=True)
+        final_raw_path = final_raw_folder / moved_raw.name
 
-    shutil.move(str(output_plot), final_output_folder / output_plot.name)
-    shutil.move(str(output_csv), final_output_folder / output_csv.name)
-    shutil.move(str(moved_raw), final_raw_path)
-    (output_folder / "raw_data").rmdir()
-    shutil.move(str(metadata_path), final_output_folder / metadata_path.name)
-    output_folder.rmdir()
+        shutil.move(str(output_plot), final_output_folder / output_plot.name)
+        shutil.move(str(output_csv), final_output_folder / output_csv.name)
+        shutil.move(str(moved_raw), final_raw_path)
+        shutil.move(str(metadata_path),
+                    final_output_folder / metadata_path.name)
 
-    output_plot = final_output_folder / output_plot.name
-    output_csv = final_output_folder / output_csv.name
-    metadata_path = final_output_folder / metadata_path.name
-    metadata["raw_data_path"] = path_relative_to(final_raw_path, repo_root)
-    metadata["output_files"] = {
-        "plot_pdf": path_relative_to(output_plot, repo_root),
-        "calibration_csv": path_relative_to(output_csv, repo_root),
-    }
-    save_metadata_json(metadata, metadata_path)
+        staging_raw_folder = output_folder / "raw_data"
+        if not any(staging_raw_folder.iterdir()):
+            staging_raw_folder.rmdir()
+        if not any(output_folder.iterdir()):
+            output_folder.rmdir()
+
+        output_plot = final_output_folder / output_plot.name
+        output_csv = final_output_folder / output_csv.name
+        metadata_path = final_output_folder / metadata_path.name
+        metadata["raw_data_path"] = path_relative_to(final_raw_path, repo_root)
+        metadata["output_files"] = {
+            "plot_pdf": path_relative_to(output_plot, repo_root),
+            "calibration_csv": path_relative_to(output_csv, repo_root),
+        }
+        save_metadata_json(metadata, metadata_path)
 
     print(f"Plot written to {output_plot}")
     print(f"CSV written to {output_csv}")
@@ -677,7 +657,7 @@ def run_calibration(
 
 
 def ensure_calibration(
-    input_path: Path | None = None,
+    input_path: str | Path | None = None,
     distance_mm: float | None = None,
     invert: bool = True,
     adaptive: bool = False,
@@ -685,13 +665,13 @@ def ensure_calibration(
     max_area: float = 2000.0,
     timestamp_source: str = "file",
     output_dir: Path | None = None,
-) -> float | None:
+) -> Path | None:
     """Return calibration metadata path or run calibration to create it.
 
     Resolution order (no subfolder scanning):
     1) If ``input_path`` is a ``*_metadata.json`` file, return it.
     2) If ``input_path`` is a folder containing ``*_metadata.json``, return the latest one.
-    3) If ``input_path`` is a ``.tif/.tiff`` file, run calibration on it (prompt for output dir when not provided) and return the created metadata JSON.
+    3) If ``input_path`` is a ``.tif/.tiff`` file, stage calibration outputs and prompt for their destination when ``output_dir`` is not provided.
     4) If ``input_path`` is a folder containing a ``.tif/.tiff`` file, run calibration on that file and return the resulting metadata JSON.
     5) Otherwise, ask the user to select a metadata JSON or calibration image file.
 
@@ -716,6 +696,7 @@ def ensure_calibration(
     return ensure_processed_artifact(
         input_path=input_path,
         output_dir=output_dir,
+        temporary_output_dir=repo_root / ".temp" / "calibration",
         metadata_pattern="*_metadata.json",
         source_patterns=("*.tif", "*.tiff"),
         output_dir_key="camera_calibration_output",

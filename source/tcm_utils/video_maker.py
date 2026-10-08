@@ -478,6 +478,31 @@ def _resolve_label_color(
     return color
 
 
+def _resolve_label_font_path(
+    font_path: str | Path | None,
+    font_style: str,
+) -> Path:
+    if font_path is not None:
+        return Path(font_path).expanduser().resolve()
+
+    font_styles = {
+        "regular": "PTSans-Regular.ttf",
+        "bold": "PTSans-Bold.ttf",
+        "italic": "PTSans-Italic.ttf",
+        "bold italic": "PTSans-BoldItalic.ttf",
+    }
+    try:
+        filename = font_styles[font_style.lower()]
+    except KeyError as error:
+        styles = ", ".join(
+            f"{style!r}" for style in font_styles
+        )
+        raise ValueError(
+            f"label_font_style must be one of {styles}"
+        ) from error
+    return Path(__file__).parent / "fonts" / filename
+
+
 def _resolve_label_location(
     location: str | tuple[float, float],
 ) -> tuple[float, float]:
@@ -529,7 +554,67 @@ def _resolve_label_location_offset(
     return float(offset[0]), float(offset[1])
 
 
-def _add_frame_labels(
+def draw_label(
+    image: Image.Image,
+    label: str,
+    *,
+    font: ImageFont.FreeTypeFont,
+    color: int,
+    stroke_color: int | None,
+    location: str | tuple[float, float],
+    location_offset: tuple[float, float],
+    font_size_px: int,
+    position: tuple[int, int] | None = None,
+) -> None:
+    """Draw an anchored label or render it at a layout-computed position.
+
+    ``position`` is the final top-left text position and overrides
+    ``location`` and ``location_offset`` when supplied.
+    """
+    drawing = ImageDraw.Draw(image)
+    stroke_width = (
+        max(1, round(font_size_px / 12))
+        if stroke_color is not None
+        else 0
+    )
+    bounds = drawing.textbbox(
+        (0, 0), label, font=font, stroke_width=stroke_width
+    )
+    text_width = math.ceil(bounds[2] - bounds[0])
+    text_height = math.ceil(bounds[3] - bounds[1])
+    margin = max(8, round(font_size_px / 2))
+    if position is None:
+        anchor_x, anchor_y = _resolve_label_location(location)
+        offset_y, offset_x = _resolve_label_location_offset(
+            location_offset, "label_location_offset"
+        )
+        max_left = image.width - text_width - margin
+        max_top = image.height - text_height - margin
+        if max_left < margin or max_top < margin:
+            raise ValueError(
+                f"Label at {font_size_px}px does not fit in "
+                f"{image.width}x{image.height} frame"
+            )
+        left = round(margin + (max_left - margin) * anchor_x)
+        top = round(margin + (max_top - margin) * anchor_y)
+    else:
+        left, top = position
+
+        offset_y = offset_x = 0.0
+
+    left = round(left + offset_x)
+    top = round(top + offset_y)
+    drawing.text(
+        (left - bounds[0], top - bounds[1]),
+        label,
+        font=font,
+        fill=color,
+        stroke_width=stroke_width,
+        stroke_fill=stroke_color,
+    )
+
+
+def add_time_scale_labels(
     image: np.ndarray,
     time_label: str,
     *,
@@ -558,7 +643,7 @@ def _add_frame_labels(
     def label_dimensions(
         label: str,
         bar_length_px: int | None = None,
-    ) -> tuple[tuple[float, float, float, float], int, int, int, int]:
+    ) -> tuple[int, int, int, int]:
         bounds = drawing.textbbox(
             (0, 0), label, font=font, stroke_width=stroke_width
         )
@@ -577,7 +662,7 @@ def _add_frame_labels(
                 f"{overlay} at {font_size_px}px does not fit in "
                 f"{frame.width}x{frame.height} frame"
             )
-        return bounds, text_width, text_height, group_width, group_height
+        return text_width, text_height, group_width, group_height
 
     def position(
         location: tuple[float, float],
@@ -591,7 +676,7 @@ def _add_frame_labels(
             round(margin + (max_top - margin) * location[1]),
         )
 
-    time_bounds, time_width, _, time_group_width, time_group_height = (
+    time_width, _, time_group_width, time_group_height = (
         label_dimensions(time_label)
     )
     time_left, time_top = position(
@@ -604,8 +689,6 @@ def _add_frame_labels(
         str,
         int,
         tuple[float, float],
-        tuple[float, float, float, float],
-        int,
         int,
         int,
         int,
@@ -613,9 +696,8 @@ def _add_frame_labels(
     if scale_bar is not None:
         scale_label, length_px, location = scale_bar
         (
-            scale_bounds,
             scale_text_width,
-            scale_text_height,
+            _,
             scale_group_width,
             scale_group_height,
         ) = label_dimensions(scale_label, length_px)
@@ -628,9 +710,7 @@ def _add_frame_labels(
             scale_label,
             length_px,
             location,
-            scale_bounds,
             scale_text_width,
-            scale_text_height,
             scale_group_width,
             scale_group_height,
         )
@@ -714,66 +794,81 @@ def _add_frame_labels(
                     stack_height, time_group_height, time_location[1]
                 )
 
-    time_left = round(time_left + time_location_offset[1])
-    time_top = round(time_top + time_location_offset[0])
+    time_left = round(time_left)
+    time_top = round(time_top)
     if scale_geometry is not None:
-        scale_left = round(scale_left + scale_bar_location_offset[1])
-        scale_top = round(scale_top + scale_bar_location_offset[0])
+        scale_left = round(scale_left)
+        scale_top = round(scale_top)
 
-    def draw_label(
+    def draw_label_group(
         label: str,
-        bounds: tuple[float, float, float, float],
         text_width: int,
         left: int,
         top: int,
+        location: tuple[float, float],
+        location_offset: tuple[float, float],
         bar_length_px: int | None = None,
     ) -> None:
         group_width = max(text_width, bar_length_px or 0)
         gap = max(4, round(font_size_px / 4)) if bar_length_px else 0
+        left = round(left + location_offset[1])
+        top = round(top + location_offset[0])
         if bar_length_px:
             bar_left = left + (group_width - bar_length_px) // 2
+            bar_top = top
             drawing.rectangle(
-                (bar_left, top, bar_left + bar_length_px - 1,
-                 top + scale_bar_height_px - 1),
+                (
+                    bar_left,
+                    bar_top,
+                    bar_left + bar_length_px - 1,
+                    bar_top + scale_bar_height_px - 1,
+                ),
                 fill=color,
             )
             text_top = top + scale_bar_height_px + gap
-            text_left = bar_left + (bar_length_px - text_width) // 2
+            text_left = (
+                left
+                + (group_width - bar_length_px) // 2
+                + (bar_length_px - text_width) // 2
+            )
         else:
             text_left, text_top = left, top
-        drawing.text(
-            (text_left - bounds[0], text_top - bounds[1]),
+        draw_label(
+            frame,
             label,
             font=font,
-            fill=color,
-            stroke_width=stroke_width,
-            stroke_fill=stroke_color,
+            color=color,
+            stroke_color=stroke_color,
+            location=location,
+            location_offset=(0.0, 0.0),
+            font_size_px=font_size_px,
+            position=(text_left, text_top),
         )
 
-    draw_label(
+    draw_label_group(
         time_label,
-        time_bounds,
         time_width,
         time_left,
         time_top,
+        time_location,
+        time_location_offset,
     )
     if scale_geometry is not None:
         (
             scale_label,
             length_px,
-            _,
-            scale_bounds,
+            scale_location,
             scale_text_width,
-            _,
             _,
             _,
         ) = scale_geometry
-        draw_label(
+        draw_label_group(
             scale_label,
-            scale_bounds,
             scale_text_width,
             scale_left,
             scale_top,
+            scale_location,
+            scale_bar_location_offset,
             length_px,
         )
     return np.asarray(frame)
@@ -806,7 +901,7 @@ def _show_frame_preview(
         processor,
         is_preview=True,
     )
-    preview = _add_frame_labels(
+    preview = add_time_scale_labels(
         preview_frame,
         label,
         font=font,
@@ -1093,21 +1188,7 @@ def make_video(
             raise ValueError("scale_bar_height_px must be a positive integer")
 
     # Resolve the label style once and reuse its font during preview and encoding.
-    if label_font_path is not None:
-        font_path = Path(label_font_path).expanduser().resolve()
-    elif label_font_style.lower() == "regular":
-        font_path = Path(__file__).parent / "fonts" / "PTSans-Regular.ttf"
-    elif label_font_style.lower() == "bold":
-        font_path = Path(__file__).parent / "fonts" / "PTSans-Bold.ttf"
-    elif label_font_style.lower() == "italic":
-        font_path = Path(__file__).parent / "fonts" / "PTSans-Italic.ttf"
-    elif label_font_style.lower() == "bold italic":
-        font_path = Path(__file__).parent / "fonts" / "PTSans-BoldItalic.ttf"
-    else:
-        raise ValueError(
-            "label_font_style must be one of 'regular', 'bold', 'italic', or 'bold italic'"
-        )
-
+    font_path = _resolve_label_font_path(label_font_path, label_font_style)
     label_font = ImageFont.truetype(str(font_path), size=label_font_size_px)
     label_gray = _resolve_label_color(label_color)
     stroke_gray = None
@@ -1418,7 +1499,7 @@ def make_video(
                 first_frame_number,
                 time_offset_s,
             )
-            frame = _add_frame_labels(
+            frame = add_time_scale_labels(
                 frame,
                 label,
                 font=label_font,
@@ -1495,7 +1576,7 @@ def make_video(
 
 
 if __name__ == "__main__":
-    # from tcm_utils.video_analysis import EllipseSizer, process_ellipse_data
+    from tcm_utils.video_analysis import EllipseSizer, ArrowPainter, process_ellipse_data
 
     # frames_dir = Path(
     #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec"
@@ -1540,9 +1621,21 @@ if __name__ == "__main__":
     calibration_path = Path(
         "/Users/tommieverouden/Documents/Data/PIV/260820_piv/calibration/processed/calibration_500um_1000001_260828_164450_metadata.json")
 
+    flow_rate_csv_path = Path(
+        "/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/260930_221324_p-002_stitched_flow_rate_shifted.csv")
+    velocity_csv_path = Path(
+        "/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/260930_221324_p-002_stitched_velocity_shifted.csv")
+
+    arrow_painter = ArrowPainter(flow_rate_csv_path=flow_rate_csv_path,
+                                 velocity_csv_path=velocity_csv_path,
+                                 arrow_scale_px_per_m_s=10,
+                                 label_color="white",
+                                 )
+
     make_video(frames_dir=frames_dir,
                frames_range=(1, 100),
                scale_bar_calibration_path=calibration_path,
                time_offset_s=0.01,
                time_stretch_s_per_s=0.0005,
-               label_color="white")
+               label_color="white",
+               processor=arrow_painter,)

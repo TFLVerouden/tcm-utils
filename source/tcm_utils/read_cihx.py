@@ -42,7 +42,7 @@ def recursive_search(d, target):
     return None
 
 
-def extract_cihx_metadata(filepath, output_folder=None, output_file="cihx_metadata",
+def extract_cihx_metadata(filepath, output_folder=None,
                           save=True, verbose=True, timestamp_source="file",
                           copy_raw=True):
     """
@@ -315,7 +315,7 @@ def ensure_cihx_processed(
     Resolution order (no subfolder scanning):
     1) If ``input_path`` is a ``*_metadata.json`` file, return it.
     2) If ``input_path`` is a folder containing ``*_metadata.json``, return the latest one.
-    3) If ``input_path`` is a ``.cihx/.cih`` file, extract metadata to ``output_dir`` (or prompt) and return the created JSON.
+    3) If ``input_path`` is a ``.cihx/.cih`` file, extract metadata to ``output_dir`` or stage it before prompting for a destination.
     4) If ``input_path`` is a folder containing a ``.cihx/.cih`` file, extract and return the created JSON.
     5) Otherwise, prompt the user to select a metadata JSON or CIHX file.
     """
@@ -336,6 +336,7 @@ def ensure_cihx_processed(
     return ensure_processed_artifact(
         input_path=input_path,
         output_dir=output_dir,
+        temporary_output_dir=repo_root / ".temp" / "camera_metadata",
         metadata_pattern="*_metadata.json",
         source_patterns="*.cihx",
         output_dir_key="cihx_output",
@@ -345,8 +346,10 @@ def ensure_cihx_processed(
         prompt_key="cihx_metadata_or_file",
         prompt_title="Select CIHX metadata JSON or CIHX file",
         prompt_filetypes=[
-            ("Metadata or CIHX", ("*_metadata.json", "*.cihx")),
-            ("All files", "*.*")],
+            ("Metadata", "*_metadata.json"),
+            ("CIHX", "*.cihx"),
+            ("All files", "*.*"),
+        ],
         start_path=Path(__file__),
     )
 
@@ -376,13 +379,14 @@ if __name__ == "__main__":
             print(f"Selected file: {selected_file}")
 
             # Extract metadata from selected file
-            metadata = extract_cihx_metadata(
-                selected_file,
-                save=True,
+            metadata_path = ensure_cihx_processed(
+                input_path=selected_file,
                 verbose=True,
                 timestamp_source="file",
                 copy_raw=True,
             )
+            if metadata_path:
+                print(f"Metadata available at {metadata_path}")
         else:
             print("No file selected. Exiting.")
 

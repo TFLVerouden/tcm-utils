@@ -4,6 +4,7 @@ import json
 import math
 import os
 import shutil
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -14,7 +15,7 @@ import numpy as np
 import tifffile
 from tqdm import tqdm
 
-from tcm_utils.file_dialogs import ask_directory, ask_open_file
+from tcm_utils.file_dialogs import ask_directory, ask_open_file, find_repo_root
 
 
 def beep(frequency_Hz: int = 1000, duration_ms: int = 200):
@@ -522,6 +523,7 @@ def ensure_processed_artifact(
     *,
     input_path: str | Path | None,
     output_dir: str | Path | None,
+    temporary_output_dir: Path | None = None,
     metadata_pattern: str,
     source_patterns: Sequence[str],
     output_dir_key: str,
@@ -535,11 +537,14 @@ def ensure_processed_artifact(
 ) -> Path | None:
     """Return metadata path, running processing if needed.
 
+    When ``output_dir`` is omitted, processor outputs are isolated in
+    ``temporary_output_dir`` until the destination is selected.
+
     Resolution order (no subfolder scanning):
     1) If ``input_path`` is a ``*_metadata.json`` file, return it.
     2) If ``input_path`` is a folder containing ``*_metadata.json``, return the latest one.
-    3) If ``input_path`` is a matching source file, process it to ``output_dir`` (or prompt) and return the created metadata JSON.
-    4) If ``input_path`` is a folder containing a matching source file, process that file and return the created metadata JSON.
+    3) If ``input_path`` is a matching source file, process it to ``output_dir`` or stage it before prompting for a destination.
+    4) If ``input_path`` is a folder containing a matching source file, process it the same way.
     5) Otherwise, prompt the user to select a metadata JSON or source file.
     """
 
@@ -549,27 +554,120 @@ def ensure_processed_artifact(
     def _latest_source(folder: Path) -> Path | None:
         return find_latest_in_directory(folder, source_patterns)
 
-    def _resolve_output_folder(default_dir: Path) -> Path | None:
-        chosen = ensure_path(
-            value=output_dir,
-            key=output_dir_key,
-            title=output_dir_title,
-            default_dir=default_dir,
-        )
-        if chosen is None:
-            print("No output directory selected.")
-            return None
-        dest = Path(chosen).expanduser().resolve()
-        dest.mkdir(parents=True, exist_ok=True)
-        return dest
+    def _move_staged_artifacts(
+        staging_dir: Path,
+        final_dir: Path,
+        metadata_path: Path,
+    ) -> Path:
+        final_dir.mkdir(parents=True, exist_ok=True)
+        metadata_relative = metadata_path.relative_to(staging_dir)
+        for source_path in staging_dir.rglob("*"):
+            if not source_path.is_file():
+                continue
+            relative_path = source_path.relative_to(staging_dir)
+            destination_path = final_dir / relative_path
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source_path), str(destination_path))
 
-    def _run_and_collect(source_path: Path, dest: Path) -> Path | None:
+        final_metadata_path = final_dir / metadata_relative
+        with final_metadata_path.open("r", encoding="utf-8") as stream:
+            metadata = json.load(stream)
+
+        repo_root = find_repo_root(Path(__file__))
+        staging_root = staging_dir.resolve()
+        final_root = final_dir.resolve()
+
+        def _relocate_path_values(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {
+                    key: _relocate_path_values(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [_relocate_path_values(item) for item in value]
+            if not isinstance(value, str):
+                return value
+
+            stored_path = Path(value)
+            candidate = (
+                stored_path if stored_path.is_absolute()
+                else repo_root / stored_path
+            ).resolve()
+            try:
+                relative_path = candidate.relative_to(staging_root)
+            except ValueError:
+                return value
+            return path_relative_to(final_root / relative_path, repo_root)
+
+        metadata = _relocate_path_values(metadata)
+        save_metadata_json(metadata, final_metadata_path)
+
+        staged_directories = sorted(
+            (path for path in staging_dir.rglob("*") if path.is_dir()),
+            key=lambda path: len(path.parts),
+            reverse=True,
+        )
+        for directory in staged_directories:
+            if not any(directory.iterdir()):
+                directory.rmdir()
+        if not any(staging_dir.iterdir()):
+            staging_dir.rmdir()
+        return final_metadata_path
+
+    def _run_and_collect(source_path: Path, default_dir: Path) -> Path | None:
+        if output_dir is None:
+            temporary_root = (
+                temporary_output_dir.expanduser().resolve()
+                if temporary_output_dir is not None
+                else (
+                    find_repo_root(Path(__file__))
+                    / ".temp"
+                    / "processed_artifacts"
+                )
+            )
+            temporary_root.mkdir(parents=True, exist_ok=True)
+            dest = Path(tempfile.mkdtemp(prefix="run-", dir=temporary_root))
+        else:
+            dest = Path(output_dir).expanduser().resolve()
+            dest.mkdir(parents=True, exist_ok=True)
+
         run_processor(source_path, dest)
         metadata_path = _latest_metadata(dest)
-        if metadata_path:
-            copy_target = source_path.parent / metadata_path.name
-            if metadata_path.resolve() != copy_target.resolve():
-                shutil.copy2(metadata_path, copy_target)
+        if metadata_path is None:
+            raise FileNotFoundError(
+                f"Processor did not create {metadata_pattern} in {dest}"
+            )
+
+        if output_dir is None:
+            chosen = ask_directory(
+                key=output_dir_key,
+                title=output_dir_title,
+                default_dir=default_dir,
+                start=Path(__file__),
+            )
+            if chosen is None:
+                print(f"Outputs remain in {dest}")
+                return metadata_path
+
+            final_dir = Path(chosen).expanduser().resolve()
+            if final_dir != dest.resolve():
+                try:
+                    final_dir.relative_to(dest.resolve())
+                except ValueError:
+                    pass
+                else:
+                    raise ValueError(
+                        "The output directory cannot be inside the temporary "
+                        f"staging directory: {dest}"
+                    )
+                metadata_path = _move_staged_artifacts(
+                    dest, final_dir, metadata_path
+                )
+            print(f"Outputs saved to {metadata_path.parent}")
+
+        copy_target = source_path.parent / metadata_path.name
+        if metadata_path.resolve() != copy_target.resolve():
+            shutil.copy2(metadata_path, copy_target)
         return metadata_path
 
     def _handle_candidate(path: Path | None) -> Path | None:
@@ -585,18 +683,12 @@ def ensure_processed_artifact(
                 return existing
 
         if path.is_file() and any(path.match(pat) for pat in source_patterns):
-            output_folder = _resolve_output_folder(path.parent)
-            if output_folder is None:
-                return None
-            return _run_and_collect(path, output_folder)
+            return _run_and_collect(path, path.parent)
 
         if path.is_dir():
             source_in_dir = _latest_source(path)
             if source_in_dir:
-                output_folder = _resolve_output_folder(path)
-                if output_folder is None:
-                    return None
-                return _run_and_collect(source_in_dir, output_folder)
+                return _run_and_collect(source_in_dir, path)
 
         return None
 
@@ -618,6 +710,106 @@ def ensure_processed_artifact(
 
     selection_path = resolve_existing_path(selection)
     return _handle_candidate(selection_path)
+
+
+def auto_brightness(
+    image: np.ndarray,
+    min_contrast: float = 40.0,
+    target_brightness: float = 128.0,
+    *,
+    percentile_stretch: bool = False,
+    low_percentile: float = 0.5,
+    high_percentile: float = 99.95,
+    limits: tuple[float, float] | None = None,
+) -> np.ndarray:
+    """Adjust image contrast using conditional brightening or percentile stretch.
+
+    Processing steps
+    ----------------
+    The default conditional mode:
+    1. Determine the intensity range (including 12-bit uint16 images).
+    2. Measure contrast between the 2nd and 98th percentiles.
+    3. Return the original image if it is flat or already has enough contrast.
+    4. Otherwise, expand contrast to ``min_contrast``, shift the mean toward
+       ``target_brightness``, clip to the intensity range, and preserve dtype.
+
+    With ``percentile_stretch=True``:
+    1. Validate the low and high percentiles.
+    2. Use ``limits`` if supplied, or calculate limits from this image.
+    3. Map the selected intensity range linearly to 0-255, clip values outside
+       it, and return uint8. Flat input ranges become all-zero images.
+
+    Shared ``limits`` let a sequence of images use consistent brightness.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Image data to adjust.
+    min_contrast : float
+        Minimum 2nd-to-98th percentile contrast for conditional brightening,
+        expressed on an 8-bit scale.
+    target_brightness : float
+        Mean intensity target for conditional brightening, expressed on an
+        8-bit scale.
+    percentile_stretch : bool
+        If True, use percentile stretching and return uint8 data instead.
+    low_percentile : float
+        Lower percentile used for stretching, from 0 to 100.
+    high_percentile : float
+        Upper percentile used for stretching, from 0 to 100.
+    limits : tuple[float, float] | None
+        Optional precomputed low and high intensity limits for stretching.
+
+    Returns
+    -------
+    np.ndarray
+        Adjusted image. The conditional path preserves unsigned image dtypes;
+        percentile stretching returns uint8.
+    """
+    if percentile_stretch:
+        if not 0 <= low_percentile < high_percentile <= 100:
+            raise ValueError("Percentiles must satisfy 0 <= low < high <= 100")
+
+        array = np.asarray(image, dtype=np.float64)
+        low, high = limits or tuple(
+            float(value)
+            for value in np.percentile(array, [low_percentile, high_percentile])
+        )
+        if high <= low:
+            return np.zeros(array.shape, dtype=np.uint8)
+        stretched = np.clip((array - low) / (high - low), 0.0, 1.0) * 255.0
+        return np.rint(stretched).astype(np.uint8)
+
+    if not 0 < min_contrast <= 255:
+        raise ValueError("min_contrast must be in the range (0, 255]")
+    if not 0 <= target_brightness <= 255:
+        raise ValueError("target_brightness must be in the range [0, 255]")
+
+    if image.dtype.kind == "u":
+        image_max = float(np.iinfo(image.dtype).max)
+        if image.dtype == np.uint16 and int(np.max(image)) <= 4095:
+            image_max = 4095.0
+    else:
+        image_max = 255.0
+
+    intensity_scale = image_max / 255.0
+    effective_min_contrast = min_contrast * intensity_scale
+    effective_target_brightness = target_brightness * intensity_scale
+
+    low, high = np.percentile(image, (2, 98))
+    contrast = float(high - low)
+    if contrast == 0 or contrast >= effective_min_contrast:
+        return image
+
+    print(f"Auto-brightening image: contrast {contrast:.2f} "
+          f"< {effective_min_contrast:.2f}, mean {np.mean(image):.2f} "
+          f"-> target {effective_target_brightness:.2f}")
+    scale = effective_min_contrast / contrast
+    offset = effective_target_brightness - scale * float(np.mean(image))
+    if image.dtype.kind != "u":
+        return cv.convertScaleAbs(image, alpha=scale, beta=offset)
+    adjusted = np.abs(image.astype(np.float64) * scale + offset)
+    return np.rint(np.clip(adjusted, 0, image_max)).astype(image.dtype)
 
 
 def load_image(path: Path) -> np.ndarray:

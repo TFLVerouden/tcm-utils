@@ -12,6 +12,7 @@ from typing import Any, Iterable, Callable, Sequence, Literal, overload
 
 import cv2 as cv
 import numpy as np
+import pymupdf
 import tifffile
 from tqdm import tqdm
 
@@ -825,6 +826,52 @@ def load_image(path: Path) -> np.ndarray:
     if image is None:
         raise FileNotFoundError(f"Failed to read image: {path}")
     return image
+
+
+def pdf_to_png(
+    pdf_path: str | Path,
+    *,
+    dpi: int = 300,
+    page_number: int = 1,
+    alpha: bool = False,
+) -> Path:
+    """Render one PDF page to a PNG next to the source PDF.
+
+    Parameters
+    ----------
+    pdf_path : str or Path
+        Path to the source PDF.
+    dpi : int
+        Resolution to render at (default: 300).
+    page_number : int
+        1-based page number to render (default: 1).
+    alpha : bool
+        Whether to preserve transparency in the output (default: False).
+
+    Returns
+    -------
+    Path
+        Path to the generated PNG.
+    """
+    pdf_path = Path(pdf_path)
+    if pdf_path.suffix.lower() != ".pdf":
+        raise ValueError(f"Expected a PDF path, got: {pdf_path}")
+    if dpi <= 0:
+        raise ValueError("dpi must be greater than zero")
+    if page_number <= 0:
+        raise ValueError("page_number must be greater than zero")
+
+    png_path = pdf_path.with_suffix(".png")
+    with pymupdf.open(pdf_path) as document:
+        if page_number > document.page_count:
+            raise ValueError(
+                f"page_number {page_number} exceeds PDF page count "
+                f"({document.page_count}): {pdf_path}"
+            )
+        page = document.load_page(page_number - 1)
+        page.get_pixmap(dpi=dpi, alpha=alpha).save(png_path)
+
+    return png_path
 
 
 def load_images(

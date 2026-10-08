@@ -18,8 +18,15 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 
+from tcm_utils.camera_calibration import ensure_calibration
 from tcm_utils.file_dialogs import ask_directory, find_repo_root
-from tcm_utils.io_utils import load_image, load_metadata, prompt_input, prompt_yes_no
+from tcm_utils.io_utils import (
+    auto_brightness,
+    load_image,
+    load_metadata,
+    prompt_input,
+    prompt_yes_no,
+)
 from tcm_utils.read_cihx import extract_cihx_metadata, recursive_search
 
 _FRAME_NUMBER = re.compile(r"(\d+)\.(?:tif|tiff)$", re.IGNORECASE)
@@ -34,6 +41,14 @@ _FRAME_RATE_KEYS = {
     "fps",
 }
 _TIME_FACTORS = {"s": 1.0, "ms": 1_000.0, "us": 1_000_000.0}
+_LENGTH_FACTORS_M = {
+    "m": 1.0,
+    "cm": 0.01,
+    "mm": 0.001,
+    "um": 0.000001,
+    "µm": 0.000001,
+    "nm": 0.000000001,
+}
 _LABEL_LOCATIONS = {
     "upper left": (0.0, 0.0),
     "upper center": (0.5, 0.0),
@@ -60,7 +75,7 @@ def _frame_number(path: Path) -> int:
 def _select_frame_paths(
     frames_dir: Path,
     frames_range: tuple[int, int] | None,
-) -> list[tuple[int, Path]]:
+) -> tuple[list[tuple[int, Path]], int]:
     if not frames_dir.is_dir():
         raise NotADirectoryError(
             f"Frames directory does not exist: {frames_dir}")
@@ -82,6 +97,7 @@ def _select_frame_paths(
         raise ValueError(
             f"Multiple TIFF files have the same trailing frame number in {frames_dir}"
         )
+    first_frame_number = numbered_paths[0][0]
 
     if frames_range is not None:
         start, end = frames_range
@@ -96,7 +112,7 @@ def _select_frame_paths(
                 f"No TIFF frames found for inclusive frame range {start}–{end}"
             )
 
-    return numbered_paths
+    return numbered_paths, first_frame_number
 
 
 def _numeric_rate(value: object) -> float | None:
@@ -111,26 +127,25 @@ def _numeric_rate(value: object) -> float | None:
     return None
 
 
-def _find_frame_rate(metadata: object) -> float | None:
-    if isinstance(metadata, dict):
-        for key, value in metadata.items():
-            if str(key).lower() in _FRAME_RATE_KEYS:
-                rate = _numeric_rate(value)
+def _get_recording_frame_rate(frames_dir: Path) -> float:
+    def find_frame_rate(metadata: object) -> float | None:
+        if isinstance(metadata, dict):
+            for key, value in metadata.items():
+                if str(key).lower() in _FRAME_RATE_KEYS:
+                    rate = _numeric_rate(value)
+                    if rate is not None:
+                        return rate
+            for value in metadata.values():
+                rate = find_frame_rate(value)
                 if rate is not None:
                     return rate
-        for value in metadata.values():
-            rate = _find_frame_rate(value)
-            if rate is not None:
-                return rate
-    elif isinstance(metadata, list):
-        for value in metadata:
-            rate = _find_frame_rate(value)
-            if rate is not None:
-                return rate
-    return None
+        elif isinstance(metadata, list):
+            for value in metadata:
+                rate = find_frame_rate(value)
+                if rate is not None:
+                    return rate
+        return None
 
-
-def _get_recording_frame_rate(frames_dir: Path) -> float:
     metadata_paths = sorted(
         (
             path
@@ -141,7 +156,7 @@ def _get_recording_frame_rate(frames_dir: Path) -> float:
         reverse=True,
     )
     for metadata_path in metadata_paths:
-        rate = _find_frame_rate(load_metadata(metadata_path))
+        rate = find_frame_rate(load_metadata(metadata_path))
         if rate is not None:
             return rate
 
@@ -276,6 +291,21 @@ def _crop_frame(
     return image[y_start:y_end, x_start:x_end]
 
 
+def _flip_frame(
+    image: np.ndarray,
+    flip: str | None,
+) -> np.ndarray:
+    if flip is None:
+        return image
+    if flip == "vertical":
+        return np.flip(image, axis=0)
+    if flip == "horizontal":
+        return np.flip(image, axis=1)
+    if flip == "both":
+        return np.flip(image, axis=(0, 1))
+    raise ValueError("flip must be 'vertical', 'horizontal', 'both', or None")
+
+
 def _sequence_contrast_limits(
     numbered_paths: list[tuple[int, Path]],
     n_jobs: int | None,
@@ -313,28 +343,6 @@ def _sequence_contrast_limits(
     )
     assert source_shape is not None and cropped_shape is not None
     return source_shape, cropped_shape, (low_limit, high_limit)
-
-
-def _auto_brightness(
-    image: np.ndarray,
-    low_percentile: float = 0.5,
-    high_percentile: float = 99.95,
-    *,
-    limits: tuple[float, float] | None = None,
-) -> np.ndarray:
-    """Stretch grayscale values to 8-bit, optionally using shared sequence limits."""
-    if not 0 <= low_percentile < high_percentile <= 100:
-        raise ValueError("Percentiles must satisfy 0 <= low < high <= 100")
-
-    array = np.asarray(image, dtype=np.float64)
-    low, high = limits or tuple(
-        float(value)
-        for value in np.percentile(array, [low_percentile, high_percentile])
-    )
-    if high <= low:
-        return np.zeros(array.shape, dtype=np.uint8)
-    stretched = np.clip((array - low) / (high - low), 0.0, 1.0) * 255.0
-    return np.rint(stretched).astype(np.uint8)
 
 
 def _format_time(
@@ -408,17 +416,42 @@ def _resolve_label_location(
     return float(location[0]), float(location[1])
 
 
-def _add_time_label(
+def _resolve_label_location_offset(
+    offset: tuple[float, float],
+    parameter_name: str,
+) -> tuple[float, float]:
+    """Validate a pixel offset in (dy, dx) order."""
+    if (
+        not isinstance(offset, tuple)
+        or len(offset) != 2
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            for value in offset
+        )
+    ):
+        raise ValueError(f"{parameter_name} must be a finite (dy, dx) pair")
+    return float(offset[0]), float(offset[1])
+
+
+def _add_frame_labels(
     image: np.ndarray,
-    label: str,
+    time_label: str,
     *,
     font: ImageFont.FreeTypeFont,
     color: int,
     stroke_color: int | None,
-    location: tuple[float, float],
+    time_location: tuple[float, float],
+    time_location_offset: tuple[float, float],
     font_size_px: int,
+    scale_bar: tuple[str, int, tuple[float, float]] | None,
+    scale_bar_location_offset: tuple[float, float],
+    scale_bar_height_px: int,
+    stacked_label_margin: int,
+    label_stacking_mode: str,
 ) -> np.ndarray:
-    """Draw the timestamp in grayscale, anchored within the frame."""
+    """Draw the timestamp and optional scale bar in grayscale."""
     frame = Image.fromarray(image).convert("L")
     drawing = ImageDraw.Draw(frame)
     stroke_width = (
@@ -426,36 +459,229 @@ def _add_time_label(
         if stroke_color is not None
         else 0
     )
-    stroke_bounds = drawing.textbbox(
-        (0, 0),
-        label,
-        font=font,
-        stroke_width=stroke_width,
-    )
-    text_width = stroke_bounds[2] - stroke_bounds[0]
-    text_height = stroke_bounds[3] - stroke_bounds[1]
-
-    # Named locations and normalized coordinates both select a point within
-    # the available margin-to-margin space for the complete label.
     margin = max(8, round(font_size_px / 2))
-    max_left = frame.width - text_width - margin
-    max_top = frame.height - text_height - margin
-    if max_left < margin or max_top < margin:
-        raise ValueError(
-            f"Time label at {font_size_px}px does not fit in "
-            f"{frame.width}x{frame.height} frame"
-        )
-    left = round(margin + (max_left - margin) * location[0])
-    top = round(margin + (max_top - margin) * location[1])
 
-    drawing.text(
-        (left - stroke_bounds[0], top - stroke_bounds[1]),
-        label,
-        font=font,
-        fill=color,
-        stroke_width=stroke_width,
-        stroke_fill=stroke_color,
+    def label_dimensions(
+        label: str,
+        bar_length_px: int | None = None,
+    ) -> tuple[tuple[float, float, float, float], int, int, int, int]:
+        bounds = drawing.textbbox(
+            (0, 0), label, font=font, stroke_width=stroke_width
+        )
+        text_width = math.ceil(bounds[2] - bounds[0])
+        text_height = math.ceil(bounds[3] - bounds[1])
+        gap = max(4, round(font_size_px / 4)) if bar_length_px else 0
+        group_width = max(text_width, bar_length_px or 0)
+        group_height = text_height + gap + (
+            scale_bar_height_px if bar_length_px else 0
+        )
+        max_left = frame.width - group_width - margin
+        max_top = frame.height - group_height - margin
+        if max_left < margin or max_top < margin:
+            overlay = "Scale bar" if bar_length_px else "Time label"
+            raise ValueError(
+                f"{overlay} at {font_size_px}px does not fit in "
+                f"{frame.width}x{frame.height} frame"
+            )
+        return bounds, text_width, text_height, group_width, group_height
+
+    def position(
+        location: tuple[float, float],
+        group_width: int,
+        group_height: int,
+    ) -> tuple[int, int]:
+        max_left = frame.width - group_width - margin
+        max_top = frame.height - group_height - margin
+        return (
+            round(margin + (max_left - margin) * location[0]),
+            round(margin + (max_top - margin) * location[1]),
+        )
+
+    time_bounds, time_width, _, time_group_width, time_group_height = (
+        label_dimensions(time_label)
     )
+    time_left, time_top = position(
+        time_location,
+        time_group_width,
+        time_group_height,
+    )
+
+    scale_geometry: tuple[
+        str,
+        int,
+        tuple[float, float],
+        tuple[float, float, float, float],
+        int,
+        int,
+        int,
+        int,
+    ] | None = None
+    if scale_bar is not None:
+        scale_label, length_px, location = scale_bar
+        (
+            scale_bounds,
+            scale_text_width,
+            scale_text_height,
+            scale_group_width,
+            scale_group_height,
+        ) = label_dimensions(scale_label, length_px)
+        scale_left, scale_top = position(
+            location,
+            scale_group_width,
+            scale_group_height,
+        )
+        scale_geometry = (
+            scale_label,
+            length_px,
+            location,
+            scale_bounds,
+            scale_text_width,
+            scale_text_height,
+            scale_group_width,
+            scale_group_height,
+        )
+
+        if time_location == location:
+            if label_stacking_mode.startswith("vertical"):
+                stack_width = max(time_group_width, scale_group_width)
+                stack_height = (
+                    time_group_height
+                    + stacked_label_margin
+                    + scale_group_height
+                )
+            else:
+                stack_width = (
+                    time_group_width
+                    + stacked_label_margin
+                    + scale_group_width
+                )
+                stack_height = max(time_group_height, scale_group_height)
+
+            max_left = frame.width - stack_width - margin
+            max_top = frame.height - stack_height - margin
+            if max_left < margin or max_top < margin:
+                raise ValueError(
+                    f"Labels in {label_stacking_mode!r} mode with a "
+                    f"{stacked_label_margin}px margin do not fit in "
+                    f"{frame.width}x{frame.height} frame"
+                )
+            stack_left = round(
+                margin + (max_left - margin) * time_location[0]
+            )
+            stack_top = round(
+                margin + (max_top - margin) * time_location[1]
+            )
+
+            def alignment_offset(
+                available: int,
+                content: int,
+                anchor: float,
+            ) -> int:
+                if anchor <= 0:
+                    return 0
+                if anchor >= 1:
+                    return available - content
+                return (available - content) // 2
+
+            if label_stacking_mode == "vertical":
+                time_left = stack_left + alignment_offset(
+                    stack_width, time_group_width, time_location[0]
+                )
+                scale_left = stack_left + alignment_offset(
+                    stack_width, scale_group_width, time_location[0]
+                )
+                time_top = stack_top
+                scale_top = stack_top + time_group_height + stacked_label_margin
+            elif label_stacking_mode == "vertical reversed":
+                scale_left = stack_left + alignment_offset(
+                    stack_width, scale_group_width, time_location[0]
+                )
+                time_left = stack_left + alignment_offset(
+                    stack_width, time_group_width, time_location[0]
+                )
+                scale_top = stack_top
+                time_top = stack_top + scale_group_height + stacked_label_margin
+            elif label_stacking_mode == "horizontal":
+                time_left = stack_left
+                scale_left = stack_left + time_group_width + stacked_label_margin
+                time_top = stack_top + alignment_offset(
+                    stack_height, time_group_height, time_location[1]
+                )
+                scale_top = stack_top + alignment_offset(
+                    stack_height, scale_group_height, time_location[1]
+                )
+            else:
+                scale_left = stack_left
+                time_left = stack_left + scale_group_width + stacked_label_margin
+                scale_top = stack_top + alignment_offset(
+                    stack_height, scale_group_height, time_location[1]
+                )
+                time_top = stack_top + alignment_offset(
+                    stack_height, time_group_height, time_location[1]
+                )
+
+    time_left = round(time_left + time_location_offset[1])
+    time_top = round(time_top + time_location_offset[0])
+    if scale_geometry is not None:
+        scale_left = round(scale_left + scale_bar_location_offset[1])
+        scale_top = round(scale_top + scale_bar_location_offset[0])
+
+    def draw_label(
+        label: str,
+        bounds: tuple[float, float, float, float],
+        text_width: int,
+        left: int,
+        top: int,
+        bar_length_px: int | None = None,
+    ) -> None:
+        group_width = max(text_width, bar_length_px or 0)
+        gap = max(4, round(font_size_px / 4)) if bar_length_px else 0
+        if bar_length_px:
+            bar_left = left + (group_width - bar_length_px) // 2
+            drawing.rectangle(
+                (bar_left, top, bar_left + bar_length_px - 1,
+                 top + scale_bar_height_px - 1),
+                fill=color,
+            )
+            text_top = top + scale_bar_height_px + gap
+            text_left = bar_left + (bar_length_px - text_width) // 2
+        else:
+            text_left, text_top = left, top
+        drawing.text(
+            (text_left - bounds[0], text_top - bounds[1]),
+            label,
+            font=font,
+            fill=color,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_color,
+        )
+
+    draw_label(
+        time_label,
+        time_bounds,
+        time_width,
+        time_left,
+        time_top,
+    )
+    if scale_geometry is not None:
+        (
+            scale_label,
+            length_px,
+            _,
+            scale_bounds,
+            scale_text_width,
+            _,
+            _,
+            _,
+        ) = scale_geometry
+        draw_label(
+            scale_label,
+            scale_bounds,
+            scale_text_width,
+            scale_left,
+            scale_top,
+            length_px,
+        )
     return np.asarray(frame)
 
 
@@ -468,18 +694,30 @@ def _show_frame_preview(
     color: int,
     stroke_color: int | None,
     location: tuple[float, float],
+    location_offset: tuple[float, float],
     font_size_px: int,
+    scale_bar: tuple[str, int, tuple[float, float]] | None,
+    scale_bar_location_offset: tuple[float, float],
+    scale_bar_height_px: int,
+    stacked_label_margin: int,
+    label_stacking_mode: str,
 ) -> bool:
     """Display one prepared frame so the user can review its appearance."""
     # Build the preview with the same overlay and contrast operation as output.
-    preview = _add_time_label(
-        _auto_brightness(image),
+    preview = _add_frame_labels(
+        auto_brightness(image, percentile_stretch=True),
         label,
         font=font,
         color=color,
         stroke_color=stroke_color,
-        location=location,
+        time_location=location,
+        time_location_offset=location_offset,
         font_size_px=font_size_px,
+        scale_bar=scale_bar,
+        scale_bar_location_offset=scale_bar_location_offset,
+        scale_bar_height_px=scale_bar_height_px,
+        stacked_label_margin=stacked_label_margin,
+        label_stacking_mode=label_stacking_mode,
     )
 
     # Use Tk for both the preview and the later folder picker. On macOS,
@@ -527,48 +765,110 @@ def _show_frame_preview(
 def make_video(
     frames_dir: str | Path | None = None,
     frames_range: tuple[int, int] | None = None,
-    output_path: str | Path | None = None,
+    recording_frame_rate: float | None = None,
     time_stretch_s_per_s: float | None = 0.002,
     output_frame_rate: float | None = None,
     time_label_unit: str = "ms",
-    recording_frame_rate: float | None = None,
+    crop_roi: tuple[int, int, int, int] | None = None,
+    flip: str | None = None,
     n_jobs: int | None = None,
-    confirm: bool = True,
-    show_preview: bool = True,
     label_font_path: str | Path | None = None,
     label_font_style: str = "regular",
     label_font_size_px: int = 48,
     label_color: str | int = "black",
     label_location: str | tuple[float, float] = "upper left",
+    label_location_offset: tuple[float, float] = (0.0, 0.0),
     label_stroke_color: str | int | None = None,
-    crop_roi: tuple[int, int, int, int] | None = None,
+    show_scale_bar: bool = False,
+    scale_bar_calibration_path: str | Path | None = None,
+    scale_bar_length: float = 5.0,
+    scale_bar_unit: str = "mm",
+    scale_bar_location: str | tuple[float, float] = "lower right",
+    scale_bar_location_offset: tuple[float, float] = (0.0, 0.0),
+    scale_bar_height_px: int = 8,
+    stacked_label_mode: str = "vertical",
+    stacked_label_margin: int = 20,
+    output_path: str | Path | None = None,
+    output_filename: str | Path | None = None,
+    confirm: bool = True,
+    show_preview: bool = True,
 ) -> Path | None:
     """Encode numbered grayscale TIFF frames as an H.264 MP4.
 
-    ``frames_range`` uses the trailing filename number and includes both ends.
-    The output rate defaults to recording rate times ``time_stretch_s_per_s``;
-    the default stretch of 0.002 therefore makes 20,000-fps footage play at
-    40 fps, retaining every selected frame. ``output_frame_rate`` overrides
-    that derived rate. Frame labels use elapsed time from the first numbered
-    TIFF in the folder, so that frame displays 0 and selected later frames
-    retain their original offsets. The video is always encoded into ``<repo>/.temp``
-    first and then moved to ``output_path``; when ``output_path`` is None, a
-    folder picker is shown afterwards (cancelling leaves the video in .temp).
-    ``crop_roi`` optionally crops every frame before preview and encoding, using
-    ``(y_start, y_end, x_start, x_end)`` coordinates. Negative coordinates are
-    offsets from the corresponding image edge, and zero end coordinates mean
-    the full extent in that direction.
-    With ``confirm=True`` (the default), ``show_preview=True`` displays the
-    first selected frame with a timestamp and a quick per-frame contrast
-    stretch before the sequence-wide contrast analysis begins.
-    ``label_font_style`` specifies a fallback font style to use if the
-    primary font is not available.
-    ``label_font_path`` selects a TrueType/OpenType font (PT Sans by default),
-    ``label_font_size_px`` sets its pixel size, ``label_color`` accepts black,
-    white, gray/grey, or a grayscale integer from 0 to 255.
-    ``label_stroke_color`` accepts the same colors; ``None`` (the default)
-    disables the stroke. ``label_location`` accepts a common legend-style
-    location or a normalized (x, y) tuple.
+    Args:
+        frames_dir: Directory containing numbered TIFF frames. If omitted, a
+            folder picker is shown.
+        frames_range: Optional inclusive (start, end) range using the trailing
+            frame number in each filename.
+        recording_frame_rate: Camera recording rate in frames per second. If
+            omitted, it is read from metadata or requested interactively.
+        time_stretch_s_per_s: Playback seconds per second of recorded time. The
+            default 0.002 makes 20,000-fps footage play at 40 fps while
+            retaining every selected frame. ``None`` means real-time playback.
+        output_frame_rate: Explicit playback rate, overriding the rate derived
+            from the recording rate and time stretch.
+        time_label_unit: Unit for timestamps: ``"s"``, ``"ms"``, or ``"us"``.
+            Labels are elapsed time from the first numbered TIFF in the folder,
+            so that frame displays 0 and selected later frames retain their
+            original offsets.
+        crop_roi: Optional crop applied before preview and encoding, given as
+            ``(y_start, y_end, x_start, x_end)``. Negative coordinates are
+            offsets from the corresponding image edge; zero end coordinates
+            mean the full extent in that direction.
+        flip: Optional frame flip: ``"vertical"``, ``"horizontal"``, or
+            ``"both"``. Flips are applied after cropping and before labels.
+        n_jobs: Number of TIFF-loading workers, or ``None`` to choose a
+            default.
+        label_font_path: Optional TrueType/OpenType font file. By default, the
+            built-in PT Sans font matching ``label_font_style`` is used.
+        label_font_style: Built-in PT Sans style: ``"regular"``, ``"bold"``,
+            ``"italic"``, or ``"bold italic"``. Ignored when
+            ``label_font_path`` is provided.
+        label_font_size_px: Timestamp and scale-bar text size in pixels.
+        label_color: Text and scale-bar color: black, white, gray/grey, or an
+            integer grayscale value from 0 to 255.
+        label_location: Timestamp position, as a common legend-style location
+            or a normalized (x, y) pair.
+        label_location_offset: Timestamp offset in pixels as a ``(dy, dx)``
+            pair, applied after any automatic label stacking. Positive values
+            move down and right; offsets may move the label off-screen.
+        stacked_label_mode: Arrangement used when the timestamp and scale bar
+            share a location: ``"vertical"`` (timestamp above), ``"horizontal"``
+            (timestamp left), ``"horizontal reversed"`` (scale bar left), or
+            ``"vertical reversed"`` (scale bar above).
+        label_stroke_color: Text outline color, accepting the same values as
+            ``label_color``. ``None`` disables the outline.
+        show_scale_bar: Whether to draw a calibrated scale bar on every frame
+            and in the preview. Supplying ``scale_bar_calibration_path`` also
+            enables the scale bar.
+        scale_bar_calibration_path: Calibration metadata path. If omitted when
+            a scale bar is enabled, a picker can select metadata or an image to
+            calibrate.
+        scale_bar_length: Physical scale-bar length.
+        scale_bar_unit: Scale-bar length unit, such as ``"mm"`` or ``"um"``.
+        scale_bar_location: Scale-bar position, as a common legend-style
+            location or a normalized (x, y) pair.
+        scale_bar_location_offset: Scale-bar offset in pixels as a
+            ``(dy, dx)`` pair, applied after any automatic label stacking.
+            Positive values move down and right; offsets may move the scale
+            bar off-screen.
+        stacked_label_margin: Gap in pixels between labels automatically
+            arranged at the same location.
+        scale_bar_height_px: Scale-bar thickness in pixels.
+        output_path: Destination MP4 file or output directory. The video is
+            encoded into ``<repo>/.temp`` first and then moved to this
+            destination. If omitted, a folder picker appears after encoding;
+            cancelling leaves the video in ``.temp``.
+        output_filename: MP4 filename used when ``output_path`` is a directory
+            or omitted. Defaults to the first selected TIFF's name without its
+            trailing frame number. Do not combine this with an MP4
+            ``output_path``.
+        confirm: Whether to show the pre-encode confirmation and ask before
+            overwriting an existing destination.
+        show_preview: Whether to show the first selected frame with its
+            timestamp and a per-frame contrast stretch before sequence-wide
+            contrast analysis. The preview is shown only when ``confirm`` is
+            true.
     """
     # Ask for the TIFF folder only when the caller did not supply one.
     if frames_dir is None:
@@ -582,6 +882,36 @@ def make_video(
         frames_dir = selected_dir
     # Resolve the folder so later file and metadata lookups use a consistent path.
     frames_dir = Path(frames_dir).expanduser().resolve()
+    if flip not in (None, "vertical", "horizontal", "both"):
+        raise ValueError(
+            "flip must be 'vertical', 'horizontal', 'both', or None")
+    label_offset = _resolve_label_location_offset(
+        label_location_offset,
+        "label_location_offset",
+    )
+    scale_bar_offset = _resolve_label_location_offset(
+        scale_bar_location_offset,
+        "scale_bar_location_offset",
+    )
+    if (
+        isinstance(stacked_label_margin, bool)
+        or not isinstance(stacked_label_margin, int)
+        or stacked_label_margin < 0
+    ):
+        raise ValueError("stacked_label_margin must be a non-negative integer")
+    if stacked_label_mode not in (
+        "horizontal",
+        "vertical",
+        "horizontal reversed",
+        "vertical reversed",
+    ):
+        raise ValueError(
+            "label_stacking_mode must be 'horizontal', 'vertical', "
+            "'horizontal reversed', or 'vertical reversed'"
+        )
+    scale_bar_enabled = (
+        show_scale_bar or scale_bar_calibration_path is not None
+    )
 
     # Reject invalid label units and playback rates before reading potentially
     # large image sequences.
@@ -602,6 +932,25 @@ def make_video(
         or label_font_size_px <= 0
     ):
         raise ValueError("label_font_size_px must be a positive integer")
+    if scale_bar_enabled:
+        if (
+            isinstance(scale_bar_length, bool)
+            or not isinstance(scale_bar_length, (int, float))
+            or not math.isfinite(scale_bar_length)
+            or scale_bar_length <= 0
+        ):
+            raise ValueError(
+                "scale_bar_length must be a positive finite number")
+        if scale_bar_unit not in _LENGTH_FACTORS_M:
+            raise ValueError(
+                f"scale_bar_unit must be one of {tuple(_LENGTH_FACTORS_M)}"
+            )
+        if (
+            isinstance(scale_bar_height_px, bool)
+            or not isinstance(scale_bar_height_px, int)
+            or scale_bar_height_px <= 0
+        ):
+            raise ValueError("scale_bar_height_px must be a positive integer")
 
     # Resolve the label style once and reuse its font during preview and encoding.
     if label_font_path is not None:
@@ -628,18 +977,57 @@ def make_video(
             "label_stroke_color",
         )
     label_anchor = _resolve_label_location(label_location)
+    scale_bar_config: tuple[str, int, tuple[float, float]] | None = None
+    if scale_bar_enabled:
+        calibration_path = ensure_calibration(
+            input_path=(
+                Path(scale_bar_calibration_path).expanduser()
+                if scale_bar_calibration_path is not None
+                else None
+            )
+        )
+        if calibration_path is None:
+            print("No calibration selected. Exiting without creating a video.")
+            return None
+        calibration_metadata = load_metadata(calibration_path)
+        calibration = (
+            calibration_metadata.get("calibration")
+            if isinstance(calibration_metadata, dict)
+            else None
+        )
+        scale_m_per_px = (
+            calibration.get("scale_m_per_px")
+            if isinstance(calibration, dict)
+            else None
+        )
+        if (
+            isinstance(scale_m_per_px, bool)
+            or not isinstance(scale_m_per_px, (int, float))
+            or not math.isfinite(scale_m_per_px)
+            or scale_m_per_px <= 0
+        ):
+            raise ValueError(
+                f"Calibration metadata at {calibration_path} must contain "
+                "a positive finite calibration.scale_m_per_px"
+            )
+        length_m = scale_bar_length * _LENGTH_FACTORS_M[scale_bar_unit]
+        scale_length_px = round(length_m / scale_m_per_px)
+        if scale_length_px < 1:
+            raise ValueError(
+                "The requested scale bar is shorter than one image pixel"
+            )
+        scale_bar_config = (
+            f"{scale_bar_length:g} {scale_bar_unit}",
+            scale_length_px,
+            _resolve_label_location(scale_bar_location),
+        )
 
     # Select the requested TIFFs by their trailing frame numbers and determine
     # the camera's recording rate from metadata, or accept a caller-supplied rate.
-    numbered_paths = _select_frame_paths(frames_dir, frames_range)
     # Use the earliest numbered TIFF in the folder as the time origin so a
     # selection starting later keeps its offset from the recording's first frame.
-    first_frame_number = min(
-        _frame_number(path)
-        for path in frames_dir.iterdir()
-        if path.is_file()
-        and path.suffix.lower() in {".tif", ".tiff"}
-        and not path.name.startswith(".")
+    numbered_paths, first_frame_number = _select_frame_paths(
+        frames_dir, frames_range
     )
     if recording_frame_rate is None:
         recording_frame_rate = _get_recording_frame_rate(frames_dir)
@@ -658,13 +1046,41 @@ def make_video(
     # only into an MP4 container.
     temp_dir = find_repo_root(Path(__file__)) / ".temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
+    first_image_stem = numbered_paths[0][1].stem
+    default_filename_stem = re.sub(r"[\s_-]*\d+$", "", first_image_stem)
+    if not default_filename_stem:
+        default_filename_stem = first_image_stem
+    if output_filename is None:
+        video_filename = f"{default_filename_stem}.mp4"
+    else:
+        video_filename = str(output_filename)
+        if not video_filename or Path(video_filename).name != video_filename:
+            raise ValueError("output_filename must be a filename, not a path")
+        if not video_filename.lower().endswith(".mp4"):
+            video_filename += ".mp4"
+
     final_path: Path | None = None
     if output_path is not None:
-        final_path = Path(output_path).expanduser().resolve()
-        if final_path.suffix.lower() != ".mp4":
+        requested_path = Path(output_path).expanduser().resolve()
+        if requested_path.is_dir():
+            final_path = requested_path / video_filename
+        elif requested_path.exists() or requested_path.suffix.lower() == ".mp4":
+            if output_filename is not None and requested_path.suffix.lower() == ".mp4":
+                raise ValueError(
+                    "Specify either output_filename or an MP4 output_path, not both"
+                )
+            if requested_path.suffix.lower() != ".mp4":
+                raise ValueError(
+                    "output_path must be an MP4 file or an output directory"
+                )
+            final_path = requested_path
+        elif output_filename is not None:
+            final_path = requested_path / video_filename
+        else:
             raise ValueError("H.264 video output must use the .mp4 extension")
-    temp_video_path = temp_dir / \
-        (final_path.name if final_path else "video.mp4")
+    temp_video_path = temp_dir / (
+        final_path.name if final_path else video_filename
+    )
 
     # Preview a single selected TIFF before loading the whole sequence for its
     # shared contrast range; this gives quick visual feedback on the edits.
@@ -672,6 +1088,7 @@ def make_video(
         preview_number, preview_path = numbered_paths[0]
         preview_image = _validate_frame(load_image(preview_path), preview_path)
         preview_image = _crop_frame(preview_image, crop_roi)
+        preview_image = _flip_frame(preview_image, flip)
         if preview_image.shape[0] % 2 or preview_image.shape[1] % 2:
             raise ValueError(
                 "H.264 4:2:0 requires even frame dimensions; "
@@ -696,7 +1113,13 @@ def make_video(
             color=label_gray,
             stroke_color=stroke_gray,
             location=label_anchor,
+            location_offset=label_offset,
             font_size_px=label_font_size_px,
+            scale_bar=scale_bar_config,
+            scale_bar_location_offset=scale_bar_offset,
+            scale_bar_height_px=scale_bar_height_px,
+            stacked_label_margin=stacked_label_margin,
+            label_stacking_mode=stacked_label_mode,
         ):
             return None
 
@@ -720,6 +1143,8 @@ def make_video(
         ", saved to " + str(final_path) if final_path else ""
     )
     video_description = "Original video" if crop_roi is None else "Cropped video"
+    if flip is not None:
+        video_description += f" with {flip} flip"
     summary = (
         f"{video_description}: {len(numbered_paths)} .TIFF images ({width}x{height}) at {recording_frame_rate:g} fps.\n"
         f"Create an H.264 MP4 video that plays back at {frame_rate:g} fps "
@@ -805,21 +1230,32 @@ def make_video(
             frame = _validate_frame(loaded, frame_path, source_shape)
             frame = _crop_frame(frame, crop_roi)
             frame = _validate_frame(frame, frame_path, expected_shape)
-            frame = _auto_brightness(frame, limits=contrast_limits)
+            frame = _flip_frame(frame, flip)
+            frame = auto_brightness(
+                frame,
+                percentile_stretch=True,
+                limits=contrast_limits,
+            )
             label = _format_time(
                 frame_number,
                 recording_frame_rate,
                 time_label_unit,
                 first_frame_number,
             )
-            frame = _add_time_label(
+            frame = _add_frame_labels(
                 frame,
                 label,
                 font=label_font,
                 color=label_gray,
                 stroke_color=stroke_gray,
-                location=label_anchor,
+                time_location=label_anchor,
+                time_location_offset=label_offset,
                 font_size_px=label_font_size_px,
+                scale_bar=scale_bar_config,
+                scale_bar_location_offset=scale_bar_offset,
+                scale_bar_height_px=scale_bar_height_px,
+                stacked_label_margin=stacked_label_margin,
+                label_stacking_mode=stacked_label_mode,
             )
             process.stdin.write(np.ascontiguousarray(frame).tobytes())
 
@@ -883,6 +1319,16 @@ def make_video(
 
 
 if __name__ == "__main__":
-    make_video(frames_dir="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec",
-               time_stretch_s_per_s=0.002, crop_roi=(10, 0, 0, 0),
-               frames_range=(1, 100), show_preview=True, label_font_style="bold")
+    make_video(
+        frames_dir="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec",
+        scale_bar_calibration_path="/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/calibration/calibration_1mmspacing_afternewtubing_C001H001S0002_260507_132953_metadata.json",
+        time_stretch_s_per_s=0.002,
+        flip="horizontal",
+        crop_roi=(10, 0, 0, 0),
+        label_location="lower left",
+        scale_bar_location="lower center",
+        scale_bar_length=5,
+        scale_bar_unit="mm",
+        label_location_offset=(0, 0),
+        show_preview=True,
+    )

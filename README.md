@@ -25,6 +25,14 @@ to a `.ttf` or `.otf` file, `label_font_size_px` to its pixel size, and
 defaults to `None`, which disables the stroke. `label_location` accepts
 positions such as `"upper left"` and `"lower right"`, or normalized coordinates
 from `(0, 0)` at the upper-left margin to `(1, 1)` at the lower-right margin.
+Set `show_scale_bar=True` to draw a scale bar and its centered length under it
+on every frame. Pass `scale_bar_calibration_path` as a calibration metadata JSON
+or calibration image path; omitting it opens the calibration picker, which can
+also run calibration on a selected image. The bar's default length is 5 mm.
+Configure its physical length, unit (`"m"`, `"cm"`, `"mm"`, `"um"`/`"µm"`, or
+`"nm"`), location, and rectangle height with `scale_bar_length`,
+`scale_bar_unit`, `scale_bar_location`, and `scale_bar_height_px`. The scale
+label shares the timestamp's font, size, color, and stroke settings.
 The video is first encoded into `<repo>/.temp` and then moved to `output_path`;
 if `output_path` is omitted, a folder picker asks where to save it afterwards.
 For example:
@@ -41,5 +49,10 @@ make_video(
     label_stroke_color="black",
     label_location="upper right",
     crop_roi=(59, -59, 0, 0),
+    show_scale_bar=True,
+    scale_bar_calibration_path="/path/to/calibration_metadata.json",
+    scale_bar_length=5,
+    scale_bar_unit="mm",
+    scale_bar_location="lower right",
 )
 ```

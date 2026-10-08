@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal
 import math
@@ -144,30 +145,44 @@ def _frame_number(path: Path) -> int:
 
 
 def _select_frame_paths(
-    frames_dir: Path,
+    frames_dirs: Sequence[Path],
     frames_range: tuple[int, int] | None,
+    *,
+    require_contiguous: bool = False,
 ) -> tuple[list[tuple[int, Path]], int]:
-    if not frames_dir.is_dir():
-        raise NotADirectoryError(
-            f"Frames directory does not exist: {frames_dir}")
+    for frames_dir in frames_dirs:
+        if not frames_dir.is_dir():
+            raise NotADirectoryError(
+                f"Frames directory does not exist: {frames_dir}")
 
     all_paths = [
         path
+        for frames_dir in frames_dirs
         for path in frames_dir.iterdir()
         if path.is_file()
         and path.suffix.lower() in {".tif", ".tiff"}
         and not path.name.startswith(".")
     ]
     if not all_paths:
-        raise FileNotFoundError(f"No TIFF frame files found in {frames_dir}")
+        raise FileNotFoundError(
+            f"No TIFF frame files found in {', '.join(map(str, frames_dirs))}"
+        )
 
     numbered_paths = [(_frame_number(path), path) for path in all_paths]
     numbered_paths.sort(key=lambda item: (item[0], item[1].name))
     frame_numbers = [number for number, _ in numbered_paths]
     if len(frame_numbers) != len(set(frame_numbers)):
         raise ValueError(
-            f"Multiple TIFF files have the same trailing frame number in {frames_dir}"
+            "Multiple TIFF files have the same trailing frame number across "
+            f"the supplied directories: {', '.join(map(str, frames_dirs))}"
         )
+    if require_contiguous:
+        for previous_number, number in zip(frame_numbers, frame_numbers[1:]):
+            if number != previous_number + 1:
+                raise ValueError(
+                    "Frame numbers across multiple frames_dir paths must be "
+                    f"continuous; found {previous_number} followed by {number}"
+                )
     first_frame_number = numbered_paths[0][0]
 
     if frames_range is not None:
@@ -198,7 +213,7 @@ def _numeric_rate(value: object) -> float | None:
     return None
 
 
-def _get_recording_frame_rate(frames_dir: Path) -> float:
+def _get_recording_frame_rate(frames_dirs: Sequence[Path]) -> float:
     def find_frame_rate(metadata: object) -> float | None:
         if isinstance(metadata, dict):
             for key, value in metadata.items():
@@ -220,6 +235,7 @@ def _get_recording_frame_rate(frames_dir: Path) -> float:
     metadata_paths = sorted(
         (
             path
+            for frames_dir in frames_dirs
             for path in frames_dir.glob("*.json")
             if "metadata" in path.name.lower() or "camera" in path.name.lower()
         ),
@@ -232,13 +248,18 @@ def _get_recording_frame_rate(frames_dir: Path) -> float:
             return rate
 
     cihx_paths = sorted(
-        (*frames_dir.glob("*.cihx"), *frames_dir.glob("*.cih")),
+        (
+            path
+            for frames_dir in frames_dirs
+            for pattern in ("*.cihx", "*.cih")
+            for path in frames_dir.glob(pattern)
+        ),
         key=lambda path: path.name.lower(),
     )
     for cihx_path in cihx_paths:
         metadata = extract_cihx_metadata(
             cihx_path,
-            output_folder=frames_dir,
+            output_folder=cihx_path.parent,
             save=False,
             verbose=False,
             copy_raw=False,
@@ -842,7 +863,7 @@ def _show_frame_preview(
 
 
 def make_video(
-    frames_dir: str | Path | None = None,
+    frames_dir: str | Path | Sequence[str | Path] | None = None,
     frames_range: tuple[int, int] | None = None,
     recording_frame_rate: float | None = None,
     time_stretch_s_per_s: float | None = 0.002,
@@ -876,8 +897,9 @@ def make_video(
     """Encode numbered grayscale TIFF frames as an H.264 MP4.
 
     Args:
-        frames_dir: Directory containing numbered TIFF frames. If omitted, a
-            folder picker is shown.
+        frames_dir: Directory containing numbered TIFF frames, or an ordered
+            sequence of directories whose numbered frames form one continuous
+            sequence. If omitted, a folder picker is shown.
         frames_range: Optional inclusive (start, end) range using the trailing
             frame number in each filename.
         recording_frame_rate: Camera recording rate in frames per second. If
@@ -973,8 +995,16 @@ def make_video(
             print("No directory selected. Exiting.")
             return None
         frames_dir = selected_dir
-    # Resolve the folder so later file and metadata lookups use a consistent path.
-    frames_dir = Path(frames_dir).expanduser().resolve()
+    if isinstance(frames_dir, (str, Path)):
+        frames_dirs = [Path(frames_dir).expanduser().resolve()]
+    else:
+        frames_dirs = [
+            Path(path).expanduser().resolve() for path in frames_dir
+        ]
+        if not frames_dirs:
+            raise ValueError("frames_dir must contain at least one directory")
+    # Use the first folder as the default for later destination pickers.
+    frames_dir = frames_dirs[0]
     if flip not in (None, "vertical", "horizontal", "both"):
         raise ValueError(
             "flip must be 'vertical', 'horizontal', 'both', or None")
@@ -1121,10 +1151,12 @@ def make_video(
     # Use the earliest numbered TIFF in the folder as the time origin so a
     # selection starting later keeps its offset from the recording's first frame.
     numbered_paths, first_frame_number = _select_frame_paths(
-        frames_dir, frames_range
+        frames_dirs,
+        frames_range,
+        require_contiguous=len(frames_dirs) > 1,
     )
     if recording_frame_rate is None:
-        recording_frame_rate = _get_recording_frame_rate(frames_dir)
+        recording_frame_rate = _get_recording_frame_rate(frames_dirs)
     elif not math.isfinite(recording_frame_rate) or recording_frame_rate <= 0:
         raise ValueError("recording_frame_rate must be positive")
 
@@ -1427,34 +1459,52 @@ def make_video(
 
 
 if __name__ == "__main__":
-    from tcm_utils.video_analysis import EllipseSizer, process_ellipse_data
+    # from tcm_utils.video_analysis import EllipseSizer, process_ellipse_data
 
-    frames_dir = Path(
-        "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec"
-    )
+    # frames_dir = Path(
+    #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec"
+    # )
+    # calibration_path = Path(
+    #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/calibration/calibration_1mmspacing_afternewtubing_C001H001S0002_260507_132953_metadata.json"
+    # )
+    # ellipse_sizer = EllipseSizer(
+    #     polarity="dark",
+    #     roi=(20, 350, 560, 680),
+    #     outline_color=255,
+    #     outline_thickness=2,
+    #     frame_range=(0, 228),
+    # )
+    # video_path = make_video(
+    #     frames_dir=frames_dir,
+    #     scale_bar_calibration_path=calibration_path,
+    #     time_stretch_s_per_s=0.002,
+    #     flip="horizontal",
+    #     crop_roi=(10, 0, 0, 0),
+    #     label_location="lower left",
+    #     scale_bar_location="lower left",
+    #     stacked_label_mode="vertical reversed",
+    #     stacked_label_margin=48,
+    #     scale_bar_length=5,
+    #     scale_bar_unit="mm",
+    #     label_location_offset=(0, 0),
+    #     show_preview=True,
+    #     processor=ellipse_sizer,
+    # )
+    # if video_path is not None and ellipse_sizer.csv_path is not None:
+    #     process_ellipse_data(ellipse_sizer.csv_path)
+
+    frames_dir = [
+        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002a"),
+        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002b"),
+        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002c"),
+        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002d"),
+        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002e"),
+    ]
+
     calibration_path = Path(
-        "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/calibration/calibration_1mmspacing_afternewtubing_C001H001S0002_260507_132953_metadata.json"
-    )
-    ellipse_sizer = EllipseSizer(
-        polarity="dark",
-        roi=(20, 350, 560, 680),
-        outline_color=255,
-        outline_thickness=2,
-        frame_range=(0, 228),
-    )
-    video_path = make_video(
-        frames_dir=frames_dir,
-        scale_bar_calibration_path=calibration_path,
-        time_stretch_s_per_s=0.002,
-        flip="horizontal",
-        crop_roi=(10, 0, 0, 0),
-        label_location="lower left",
-        scale_bar_location="lower center",
-        scale_bar_length=5,
-        scale_bar_unit="mm",
-        label_location_offset=(0, 0),
-        show_preview=True,
-        processor=ellipse_sizer,
-    )
-    if video_path is not None and ellipse_sizer.csv_path is not None:
-        process_ellipse_data(ellipse_sizer.csv_path)
+        "/Users/tommieverouden/Documents/Data/PIV/260820_piv/calibration/processed/calibration_500um_1000001_260828_164450_metadata.json")
+
+    make_video(frames_dir=frames_dir,
+               frames_range=(0, 100),
+               scale_bar_calibration_path=calibration_path,
+               time_stretch_s_per_s=0.05,)

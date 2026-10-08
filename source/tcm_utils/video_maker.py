@@ -456,8 +456,10 @@ def _format_time(
     recording_rate: float,
     unit: str,
     first_frame_number: int,
+    time_offset_s: float | None = None,
 ) -> str:
-    seconds = (frame_number - first_frame_number) / recording_rate
+    offset = 0.0 if time_offset_s is None else time_offset_s
+    seconds = (frame_number - first_frame_number) / recording_rate + offset
     value = seconds * _TIME_FACTORS[unit]
     time_step = _TIME_FACTORS[unit] / recording_rate
     precision = max(
@@ -885,6 +887,7 @@ def make_video(
     frames_dir: str | Path | Sequence[str | Path] | None = None,
     frames_range: tuple[int, int] | None = None,
     recording_frame_rate: float | None = None,
+    time_offset_s: float | None = None,
     time_stretch_s_per_s: float | None = 0.002,
     output_frame_rate: float | None = None,
     time_label_unit: str = "ms",
@@ -924,6 +927,8 @@ def make_video(
             frame number in each filename.
         recording_frame_rate: Camera recording rate in frames per second. If
             omitted, it is read from metadata or requested interactively.
+        time_offset_s: Optional time offset in seconds added to the timestamp of
+            every frame.
         time_stretch_s_per_s: Playback seconds per second of recorded time. The
             default 0.002 makes 20,000-fps footage play at 40 fps while
             retaining every selected frame. ``None`` means real-time playback.
@@ -931,9 +936,9 @@ def make_video(
             from the recording rate and time stretch.
         time_label_unit: Unit for timestamps: ``"s"``, ``"ms"``, or ``"us"``.
             Labels are elapsed time from the first numbered TIFF in the folder,
-            so that frame displays 0 and selected later frames retain their
-            original offsets.
-        crop_roi: Optional crop applied before preview and encoding, given as
+            plus ``time_offset_s``. With no offset, the first numbered frame
+            displays 0 and selected later frames retain their original offsets.
+        crop_roi: Optional crop applied after rotation and flipping, given as
             ``(y_start, y_end, x_start, x_end)``. Negative coordinates are
             offsets from the corresponding image edge; zero end coordinates
             mean the full extent in that direction.
@@ -1065,6 +1070,8 @@ def make_video(
     if time_label_unit not in _TIME_FACTORS:
         raise ValueError(
             f"time_label_unit must be one of {tuple(_TIME_FACTORS)}")
+    if time_offset_s is not None and not math.isfinite(time_offset_s):
+        raise ValueError("time_offset_s must be finite or None")
     if time_stretch_s_per_s is not None and (
         not math.isfinite(time_stretch_s_per_s) or time_stretch_s_per_s <= 0
     ):
@@ -1256,6 +1263,7 @@ def make_video(
             recording_frame_rate,
             time_label_unit,
             first_frame_number,
+            time_offset_s,
         )
         print(
             "Reviewing one-frame preview before analyzing all selected TIFFs. "
@@ -1415,6 +1423,7 @@ def make_video(
                 recording_frame_rate,
                 time_label_unit,
                 first_frame_number,
+                time_offset_s,
             )
             frame = _add_frame_labels(
                 frame,
@@ -1539,6 +1548,8 @@ if __name__ == "__main__":
         "/Users/tommieverouden/Documents/Data/PIV/260820_piv/calibration/processed/calibration_500um_1000001_260828_164450_metadata.json")
 
     make_video(frames_dir=frames_dir,
-               frames_range=(0, 100),
+               frames_range=(1, 100),
                scale_bar_calibration_path=calibration_path,
-               time_stretch_s_per_s=0.05,)
+               time_offset_s=0.01,
+               time_stretch_s_per_s=0.0005,
+               label_color="white")

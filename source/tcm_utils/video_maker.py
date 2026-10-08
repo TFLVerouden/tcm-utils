@@ -30,7 +30,7 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.read_cihx import extract_cihx_metadata, recursive_search
 
-_FRAME_NUMBER = re.compile(r"(\d+)\.(?:tif|tiff)$", re.IGNORECASE)
+_FRAME_NUMBER = re.compile(r"(\d{6})\.(?:tif|tiff)$", re.IGNORECASE)
 _FRAME_RATE_KEYS = {
     "recordrate",
     "framerate",
@@ -184,7 +184,6 @@ def _select_frame_paths(
                     f"continuous; found {previous_number} followed by {number}"
                 )
     first_frame_number = numbered_paths[0][0]
-
     if frames_range is not None:
         start, end = frames_range
         if start > end:
@@ -859,7 +858,12 @@ def _show_frame_preview(
             default=True,
         )
     finally:
-        root.destroy()
+        try:
+            canvas.get_tk_widget().destroy()
+            # FigureCanvasTkAgg has no public close method for its Tk image.
+            del canvas._tkphoto
+        finally:
+            root.destroy()
 
 
 def make_video(

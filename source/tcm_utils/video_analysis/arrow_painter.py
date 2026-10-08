@@ -32,6 +32,9 @@ class ArrowPainter(FrameProcessor):
         flow_rate_csv_path: Path,
         velocity_csv_path: Path,
         arrow_scale_px_per_m_s: float,
+        arrow_linewidth_px: int = 1,
+        arrow_max_head_width_px: float = 20.0,
+        arrow_opacity: float = 0.8,
         label_font_path: str | Path | None = None,
         label_font_style: str = "regular",
         label_font_size_px: int = 48,
@@ -50,6 +53,28 @@ class ArrowPainter(FrameProcessor):
                 "arrow_scale_px_per_m_s must be a positive finite number"
             )
         if (
+            isinstance(arrow_linewidth_px, bool)
+            or not isinstance(arrow_linewidth_px, int)
+            or arrow_linewidth_px <= 0
+        ):
+            raise ValueError("arrow_linewidth_px must be a positive integer")
+        if (
+            isinstance(arrow_max_head_width_px, bool)
+            or not isinstance(arrow_max_head_width_px, (int, float))
+            or not math.isfinite(arrow_max_head_width_px)
+            or arrow_max_head_width_px <= 0
+        ):
+            raise ValueError(
+                "arrow_max_head_width_px must be a positive finite number"
+            )
+        if (
+            isinstance(arrow_opacity, bool)
+            or not isinstance(arrow_opacity, (int, float))
+            or not math.isfinite(arrow_opacity)
+            or not 0 <= arrow_opacity <= 1
+        ):
+            raise ValueError("arrow_opacity must be a finite number from 0 to 1")
+        if (
             isinstance(label_font_size_px, bool)
             or not isinstance(label_font_size_px, int)
             or label_font_size_px <= 0
@@ -65,6 +90,9 @@ class ArrowPainter(FrameProcessor):
             velocity_data["windows"],
         )
         self.arrow_scale_px_per_m_s = float(arrow_scale_px_per_m_s)
+        self.arrow_linewidth_px = arrow_linewidth_px
+        self.arrow_max_head_width_px = float(arrow_max_head_width_px)
+        self.arrow_opacity = float(arrow_opacity)
         font_path = _resolve_label_font_path(
             label_font_path,
             label_font_style,
@@ -166,11 +194,13 @@ class ArrowPainter(FrameProcessor):
         if flow_index is not None:
             flow_rate = self.flow_rates_l_s[flow_index]
             flow_rate_text = (
-                f"{flow_rate:.3g}" if math.isfinite(flow_rate) else "-"
+                f"{flow_rate:.2f}" if math.isfinite(flow_rate) else "-"
             )
             flow_label = f"{flow_rate_text} L/s"
 
         pixels_per_mm = 0.001 / self.scale_m_per_px
+        arrow_overlay = frame.copy()
+        has_arrows = False
         for window in self.velocity_windows.values():
             sample_index = _nearest_time_index(window["time_s"], time_s)
             if sample_index is None:
@@ -198,16 +228,37 @@ class ArrowPainter(FrameProcessor):
             if (end_x, end_y) == (start_x, start_y):
                 continue
 
+            arrow_length_px = math.hypot(
+                end_x - start_x,
+                end_y - start_y,
+            )
+            # OpenCV's 45-degree head sides give a base width of sqrt(2) times
+            # tipLength times the arrow length.
+            tip_length = min(
+                0.2,
+                self.arrow_max_head_width_px
+                / (math.sqrt(2) * arrow_length_px),
+            )
             cv.arrowedLine(
-                frame,
+                arrow_overlay,
                 (start_x, start_y),
                 (end_x, end_y),
                 color=255,
-                thickness=1,
+                thickness=self.arrow_linewidth_px,
                 line_type=cv.LINE_AA,
-                tipLength=0.2,
+                tipLength=tip_length,
             )
+            has_arrows = True
 
+        if has_arrows:
+            cv.addWeighted(
+                arrow_overlay,
+                self.arrow_opacity,
+                frame,
+                1.0 - self.arrow_opacity,
+                0,
+                dst=frame,
+            )
         if flow_index is not None:
             image = Image.fromarray(frame)
             draw_label(

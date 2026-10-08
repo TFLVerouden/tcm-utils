@@ -1628,12 +1628,14 @@ if __name__ == "__main__":
 
     arrow_painter = ArrowPainter(flow_rate_csv_path=flow_rate_csv_path,
                                  velocity_csv_path=velocity_csv_path,
-                                 arrow_scale_px_per_m_s=10,
+                                 arrow_scale_px_per_m_s=8,
                                  label_color="white",
+                                 arrow_linewidth_px=2,
+                                 arrow_opacity=0.7
                                  )
 
     make_video(frames_dir=frames_dir,
-               frames_range=(1, 100),
+               #    frames_range=(1, 100),
                scale_bar_calibration_path=calibration_path,
                time_offset_s=0.01,
                time_stretch_s_per_s=0.0005,

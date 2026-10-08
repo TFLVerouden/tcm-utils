@@ -54,6 +54,14 @@ Configure its physical length, unit (`"m"`, `"cm"`, `"mm"`, `"um"`/`"µm"`, or
 `"nm"`), location, and rectangle height with `scale_bar_length`,
 `scale_bar_unit`, `scale_bar_location`, and `scale_bar_height_px`. The scale
 label shares the timestamp's font, size, color, and stroke settings.
+For flow-rate labels and velocity arrows, pass
+`tcm_utils.video_analysis.ArrowPainter` as the video `processor`.
+`arrow_linewidth_px` controls the arrow stroke (default 1 px), and
+`arrow_max_head_width_px` caps the arrowhead's geometric width (default 20 px):
+the head grows proportionally with the arrow until it reaches that width, then
+stays the same size as the shaft extends. `arrow_opacity` controls transparency
+from 0 (transparent) to 1 (opaque), defaulting to 0.8. Flow-rate labels use
+two decimal places.
 The video is first encoded into `<repo>/.temp` and then moved to `output_path`;
 if `output_path` is omitted, a folder picker asks where to save it afterwards.
 For example:

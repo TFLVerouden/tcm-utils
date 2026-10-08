@@ -15,3 +15,6 @@ ytick.color: white
 
 # --- Grid ---
 grid.color: 0.35
+
+# --- Legend (avoid; prefer in-axes label text) ---
+legend.edgecolor: 0

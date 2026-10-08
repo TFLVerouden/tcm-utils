@@ -1,0 +1,8 @@
+# tcm_utils - tcm-poster paper style overrides (thinner lines)
+# Layer this on top of tcm-poster.mplstyle so unchanged settings are inherited.
+
+# --- Spines / axes ---
+axes.linewidth: 1.5
+
+# --- Lines (data) ---
+lines.linewidth: 2.0

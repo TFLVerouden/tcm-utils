@@ -33,6 +33,7 @@ def axes_frac_to_data(ax, xy: tuple[float, float]) -> tuple[float, float]:
 
 def use_tcm_poster_style(
     *,
+    paper_mode: bool = False,
     dark_mode: bool = False,
     black_white_first: bool = False,
     cvd_friendly: bool = True,
@@ -41,6 +42,8 @@ def use_tcm_poster_style(
     """Activate the bundled Matplotlib poster style.
 
     Args:
+        paper_mode:
+            If True, use the paper mode style.
         dark_mode:
             If True, overlay the dark poster variant on top of the base style.
         cvd_friendly:
@@ -56,9 +59,13 @@ def use_tcm_poster_style(
 
     pkg_root = files("tcm_utils")
     style_paths = [pkg_root.joinpath("styles", "tcm-poster.mplstyle")]
+    if paper_mode:
+        style_paths.append(
+            pkg_root.joinpath("styles", "tcm-paper.mplstyle")
+        )
     if dark_mode:
         style_paths.append(
-            pkg_root.joinpath("styles", "tcm-poster-dark.mplstyle")
+            pkg_root.joinpath("styles", "tcm-dark.mplstyle")
         )
         first_color = '#ffffff' if black_white_first else None
     else:

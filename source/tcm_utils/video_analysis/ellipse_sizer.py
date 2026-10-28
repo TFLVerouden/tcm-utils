@@ -24,7 +24,7 @@ Roi = tuple[int, int, int, int]
 class EllipseMeasurement:
     frame_number: int
     detected: bool
-    time_ms: float
+    time_ms: float | None
     center_x_px: float | None = None
     center_y_px: float | None = None
     center_x_m: float | None = None
@@ -50,7 +50,8 @@ class EllipseSizer(FrameProcessor):
     coordinates select the full extent. ``fit_rmse_px`` is a radial boundary
     residual, not a statistical uncertainty estimate. ``frame_range`` is an
     inclusive range of source frame numbers; encoded frames outside it are
-    returned unchanged and omitted from the CSV.
+    returned unchanged and omitted from the CSV. When there is no recording
+    time scale, ``time_ms`` is blank in the CSV and analysis uses frame numbers.
     """
 
     csv_columns = (
@@ -164,10 +165,10 @@ class EllipseSizer(FrameProcessor):
             isinstance(recording_frame_rate, bool)
             or not isinstance(recording_frame_rate, (int, float))
             or not math.isfinite(recording_frame_rate)
-            or recording_frame_rate <= 0
+            or recording_frame_rate < 0
         ):
             raise ValueError(
-                "EllipseSizer requires a positive finite recording_frame_rate"
+                "EllipseSizer requires a finite non-negative recording_frame_rate"
             )
         scale_m_per_px = context.get("scale_m_per_px")
         if (
@@ -197,6 +198,11 @@ class EllipseSizer(FrameProcessor):
         ):
             raise ValueError(
                 "EllipseSizer requires a finite time_offset_s or None"
+            )
+        if recording_frame_rate == 0 and time_offset_s != 0:
+            raise ValueError(
+                "EllipseSizer cannot use time_offset_s when "
+                "recording_frame_rate is 0"
             )
 
         self.recording_frame_rate = float(recording_frame_rate)
@@ -250,10 +256,15 @@ class EllipseSizer(FrameProcessor):
                 "before processing frames"
             )
         time_ms = (
-            (frame_number - self.first_frame_number)
-            / self.recording_frame_rate
-            + self.time_offset_s
-        ) * 1000
+            (
+                (frame_number - self.first_frame_number)
+                / self.recording_frame_rate
+                + self.time_offset_s
+            )
+            * 1000
+            if self.recording_frame_rate > 0
+            else None
+        )
         y_start, y_end, x_start, x_end = self._resolve_roi(frame.shape)
         roi_frame = frame[y_start:y_end, x_start:x_end]
         threshold_type = (
@@ -395,8 +406,9 @@ class EllipseSizer(FrameProcessor):
 def process_ellipse_data(
     csv_path: str | Path,
     output_path: str | Path | None = None,
+    plot_title: str = "Falling droplet",
 ) -> Path:
-    """Plot projected ellipse area in square micrometres against time."""
+    """Plot ellipse radii against time or experiment frame number."""
     use_tcm_poster_style(paper_mode=True)
     csv_path = Path(csv_path)
     if output_path is None:
@@ -408,7 +420,18 @@ def process_ellipse_data(
     with csv_path.open(newline="", encoding="utf-8") as csv_file:
         rows = list(csv.DictReader(csv_file))
 
-    time_ms = np.array([float(row["time_ms"]) for row in rows])
+    time_labels = [row["time_ms"].strip() for row in rows]
+    timeless = all(not label for label in time_labels)
+    if timeless:
+        x_values = np.array([int(row["frame_number"]) for row in rows])
+        x_unit = "Experiment nr."
+        linestyle = ""
+        marker = "."
+    else:
+        x_values = np.array([float(label) for label in time_labels])
+        x_unit = "ms"
+        linestyle = "-"
+        marker = ""
     area_um2 = np.array([
         float(row["projected_area_um2"])
         if row["projected_area_um2"]
@@ -433,20 +456,22 @@ def process_ellipse_data(
         circle_of_equal_area_radius_m[np.isfinite(circle_of_equal_area_radius_m)])
 
     figure, axis = plt.subplots()
-    axis.plot(time_ms, radius_major_m * 1e3, label="Major axis")
-    axis.plot(time_ms, radius_minor_m * 1e3, label="Minor axis")
-    axis.plot(time_ms, circle_of_equal_area_radius_m *
-              1e3, label="Circle of equal area")
+    axis.plot(x_values, radius_major_m * 1e3,
+              label="Major axis", linestyle=linestyle, marker=marker)
+    axis.plot(x_values, radius_minor_m * 1e3,
+              label="Minor axis", linestyle=linestyle, marker=marker)
+    axis.plot(x_values, circle_of_equal_area_radius_m *
+              1e3, label="Circle of equal area", linestyle=linestyle, marker=marker)
     axis.axhline(mean_radius * 1e3, color=get_color(2),
                  linestyle="--", label=f"Mean: {mean_radius*1e3:.2f} mm")
 
     axis.legend(loc="lower center", ncol=2)
-    # ncol=axis.get_legend_handles_labels()[0].__len__())
-    # axis.set_xlabel("Time (ms)")
-    # axis.xaxis.set_tick_params(labelbottom=False)
     axis.set_ylabel("Radius (mm)")
-    axis.set_title("Falling droplet")
-    append_unit_to_last_ticklabel(axis, axis="x", unit="ms")
+    axis.set_title(plot_title)
+    if not timeless:
+        append_unit_to_last_ticklabel(axis, axis="x", unit=x_unit)
+    else:
+        axis.set_xlabel(x_unit)
 
     # axis[1].plot(time_ms, area_um2 / 1e6)
     # axis[1].set_ylabel("Ellipse area (mm²)")

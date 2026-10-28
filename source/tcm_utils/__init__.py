@@ -7,6 +7,7 @@ from . import cough_model
 from . import cvd_check
 from . import io_utils
 from . import plot_style
+from . import scientific_cmaps
 from . import tif_utils
 from . import time_utils
 from . import video_maker

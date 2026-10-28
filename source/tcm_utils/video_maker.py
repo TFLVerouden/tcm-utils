@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import warnings
 from typing import Iterator, Protocol
 
 import numpy as np
@@ -30,7 +31,6 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.read_cihx import extract_cihx_metadata, recursive_search
 
-_FRAME_NUMBER = re.compile(r"(\d{6})\.(?:tif|tiff)$", re.IGNORECASE)
 _FRAME_RATE_KEYS = {
     "recordrate",
     "framerate",
@@ -121,8 +121,9 @@ _LABEL_LOCATIONS = {
 }
 
 
-def _frame_number(path: Path) -> int:
-    match = _FRAME_NUMBER.search(path.name)
+def _frame_number(path: Path, nr_digits: int = 6) -> int:
+    match = re.compile(
+        rf"(\d{{{nr_digits}}})\.(?:tif|tiff)$", re.IGNORECASE).search(path.name)
     if match is None:
         raise ValueError(
             f"TIFF filename must end in a frame number before its extension: {path.name}"
@@ -133,6 +134,7 @@ def _frame_number(path: Path) -> int:
 def _select_frame_paths(
     frames_dirs: Sequence[Path],
     frames_range: tuple[int, int] | None,
+    frame_number_digits: int,
     *,
     require_contiguous: bool = False,
 ) -> tuple[list[tuple[int, Path]], int]:
@@ -154,7 +156,8 @@ def _select_frame_paths(
             f"No TIFF frame files found in {', '.join(map(str, frames_dirs))}"
         )
 
-    numbered_paths = [(_frame_number(path), path) for path in all_paths]
+    numbered_paths = [(_frame_number(path, frame_number_digits), path)
+                      for path in all_paths]
     numbered_paths.sort(key=lambda item: (item[0], item[1].name))
     frame_numbers = [number for number, _ in numbered_paths]
     if len(frame_numbers) != len(set(frame_numbers)):
@@ -443,16 +446,23 @@ def _format_time(
     unit: str,
     first_frame_number: int,
     time_offset_s: float | None = None,
+    label_location: str = "suffix",
 ) -> str:
-    offset = 0.0 if time_offset_s is None else time_offset_s
-    seconds = (frame_number - first_frame_number) / recording_rate + offset
-    value = seconds * _TIME_FACTORS[unit]
-    time_step = _TIME_FACTORS[unit] / recording_rate
-    precision = max(
-        0,
-        -Decimal(format(time_step, ".3g")).as_tuple().exponent,
-    )
-    return f"{value:.{precision}f} {unit}"
+    if recording_rate == 0:
+        value = str(frame_number)
+    else:
+        offset = 0.0 if time_offset_s is None else time_offset_s
+        seconds = (frame_number - first_frame_number) / recording_rate + offset
+        value_in_unit = seconds * _TIME_FACTORS[unit]
+        time_step = _TIME_FACTORS[unit] / recording_rate
+        precision = max(
+            0,
+            -Decimal(format(time_step, ".3g")).as_tuple().exponent,
+        )
+        value = f"{value_in_unit:.{precision}f}"
+    if label_location == "prefix":
+        return f"{unit} {value}"
+    return f"{value} {unit}"
 
 
 def _resolve_label_color(
@@ -967,11 +977,13 @@ def _show_frame_preview(
 def make_video(
     frames_dir: str | Path | Sequence[str | Path] | None = None,
     frames_range: tuple[int, int] | None = None,
+    frame_number_digits: int = 6,
     recording_frame_rate: float | None = None,
     time_offset_s: float | None = None,
     time_stretch_s_per_s: float | None = 0.002,
     output_frame_rate: float | None = None,
     time_label_unit: str = "ms",
+    time_label_location: str = "suffix",
     crop_roi: tuple[int, int, int, int] | None = None,
     rotate_deg: int | None = None,
     flip: str | None = None,
@@ -1006,19 +1018,27 @@ def make_video(
             sequence. If omitted, a folder picker is shown.
         frames_range: Optional inclusive (start, end) range using the trailing
             frame number in each filename.
+        frame_number_digits: Optional number of digits in the trailing frame
+            number of each filename. If omitted, the default is 6.
         recording_frame_rate: Camera recording rate in frames per second. If
-            omitted, it is read from metadata or requested interactively.
-        time_offset_s: Optional time offset in seconds added to the timestamp of
-            every frame.
+            omitted, it is read from metadata or requested interactively. Set
+            to ``0`` when each frame is a separate experiment and has no time
+            scale; in that mode ``output_frame_rate`` is required.
+        time_offset_s: Optional time offset in seconds added to the timestamp
+            of every frame. Not available when ``recording_frame_rate=0``.
         time_stretch_s_per_s: Playback seconds per second of recorded time. The
             default 0.002 makes 20,000-fps footage play at 40 fps while
             retaining every selected frame. ``None`` means real-time playback.
         output_frame_rate: Explicit playback rate, overriding the rate derived
             from the recording rate and time stretch.
         time_label_unit: Unit for timestamps: ``"s"``, ``"ms"``, or ``"us"``.
-            Labels are elapsed time from the first numbered TIFF in the folder,
-            plus ``time_offset_s``. With no offset, the first numbered frame
-            displays 0 and selected later frames retain their original offsets.
+            Timestamps are elapsed time from the first numbered TIFF in the
+            folder, plus ``time_offset_s``. When ``recording_frame_rate=0``,
+            this is instead arbitrary label text shown with the TIFF's frame
+            number; using ``"s"``, ``"ms"``, or ``"us"`` warns because there
+            is no time scale.
+        time_label_location: Whether the unit appears before (``"prefix"``) or
+            after (``"suffix"``) the label value. Defaults to ``"suffix"``.
         crop_roi: Optional crop applied after rotation and flipping, given as
             ``(y_start, y_end, x_start, x_end)``. Negative coordinates are
             offsets from the corresponding image edge; zero end coordinates
@@ -1148,9 +1168,12 @@ def make_video(
 
     # Reject invalid label units and playback rates before reading potentially
     # large image sequences.
-    if time_label_unit not in _TIME_FACTORS:
+    if not isinstance(time_label_unit, str) or not time_label_unit.strip():
+        raise ValueError("time_label_unit must be a non-empty string")
+    if time_label_location not in ("prefix", "suffix"):
         raise ValueError(
-            f"time_label_unit must be one of {tuple(_TIME_FACTORS)}")
+            "time_label_location must be 'prefix' or 'suffix'"
+        )
     if time_offset_s is not None and not math.isfinite(time_offset_s):
         raise ValueError("time_offset_s must be finite or None")
     if time_stretch_s_per_s is not None and (
@@ -1158,7 +1181,10 @@ def make_video(
     ):
         raise ValueError("time_stretch_s_per_s must be positive or None")
     if output_frame_rate is not None and (
-        not math.isfinite(output_frame_rate) or output_frame_rate <= 0
+        isinstance(output_frame_rate, bool)
+        or not isinstance(output_frame_rate, (int, float))
+        or not math.isfinite(output_frame_rate)
+        or output_frame_rate <= 0
     ):
         raise ValueError("output_frame_rate must be positive or None")
     if (
@@ -1251,17 +1277,51 @@ def make_video(
     numbered_paths, first_frame_number = _select_frame_paths(
         frames_dirs,
         frames_range,
+        frame_number_digits=frame_number_digits,
         require_contiguous=len(frames_dirs) > 1,
     )
     if recording_frame_rate is None:
         recording_frame_rate = _get_recording_frame_rate(frames_dirs)
-    elif not math.isfinite(recording_frame_rate) or recording_frame_rate <= 0:
-        raise ValueError("recording_frame_rate must be positive")
+    elif (
+        isinstance(recording_frame_rate, bool)
+        or not isinstance(recording_frame_rate, (int, float))
+        or not math.isfinite(recording_frame_rate)
+        or recording_frame_rate < 0
+    ):
+        raise ValueError(
+            "recording_frame_rate must be positive or zero"
+        )
+    if recording_frame_rate == 0:
+        if output_frame_rate is None:
+            raise ValueError(
+                "output_frame_rate is required when recording_frame_rate is 0"
+            )
+        if time_label_unit.strip().lower() in _TIME_FACTORS:
+            warnings.warn(
+                f"time_label_unit={time_label_unit!r} is a time unit, but "
+                "recording_frame_rate=0 has no time scale; it will be used "
+                "as literal label text.",
+                UserWarning,
+                stacklevel=2,
+            )
+        if time_offset_s is not None:
+            raise ValueError(
+                "time_offset_s cannot be used when recording_frame_rate is 0"
+            )
+    elif time_label_unit not in _TIME_FACTORS:
+        raise ValueError(
+            f"time_label_unit must be one of {tuple(_TIME_FACTORS)} "
+            "when recording_frame_rate is positive"
+        )
 
     # Derive the playback rate from the requested stretch unless the caller
     # explicitly overrides the output rate.
     stretch = 1.0 if time_stretch_s_per_s is None else time_stretch_s_per_s
-    frame_rate = output_frame_rate or recording_frame_rate * stretch
+    frame_rate = (
+        output_frame_rate
+        if output_frame_rate is not None
+        else recording_frame_rate * stretch
+    )
     frame_rate_text = format(frame_rate, ".12g")
 
     context_setter = (
@@ -1338,6 +1398,7 @@ def make_video(
             time_label_unit,
             first_frame_number,
             time_offset_s,
+            time_label_location,
         )
         print(
             "Reviewing one-frame preview before analyzing all selected TIFFs. "
@@ -1394,8 +1455,14 @@ def make_video(
         video_description += f" rotated {rotate_deg}°"
     if flip is not None:
         video_description += f" with {flip} flip"
+    recording_description = (
+        "with each frame treated as a separate experiment"
+        if recording_frame_rate == 0
+        else f"at {recording_frame_rate:g} fps"
+    )
     summary = (
-        f"{video_description}: {len(numbered_paths)} .TIFF images ({width}x{height}) at {recording_frame_rate:g} fps.\n"
+        f"{video_description}: {len(numbered_paths)} .TIFF images "
+        f"({width}x{height}) {recording_description}.\n"
         f"Create an H.264 MP4 video that plays back at {frame_rate:g} fps "
         f"({duration_s:.3f} s){destination_text}?"
     )
@@ -1498,6 +1565,7 @@ def make_video(
                 time_label_unit,
                 first_frame_number,
                 time_offset_s,
+                time_label_location,
             )
             frame = add_time_scale_labels(
                 frame,
@@ -1578,6 +1646,7 @@ def make_video(
 if __name__ == "__main__":
     from tcm_utils.video_analysis import EllipseSizer, ArrowPainter, process_ellipse_data
 
+    # # EXAMPLE 1: 26 Ga needle falling droplet tracked in time
     # frames_dir = Path(
     #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/260415_needlesize_timing_test/Ga26/timing_Ga26_59.5ms_newtube_P-001_20000fps_16700 nsec"
     # )
@@ -1610,34 +1679,74 @@ if __name__ == "__main__":
     # if video_path is not None and ellipse_sizer.csv_path is not None:
     #     process_ellipse_data(ellipse_sizer.csv_path)
 
-    frames_dir = [
-        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002a"),
-        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002b"),
-        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002c"),
-        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002d"),
-        Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002e"),
-    ]
+    # # EXAMPLE 2: PIV arrow drawing
+    # frames_dir = [
+    #     Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002a"),
+    #     Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002b"),
+    #     Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002c"),
+    #     Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002d"),
+    #     Path("/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/P-002e"),
+    # ]
 
+    # calibration_path = Path(
+    #     "/Users/tommieverouden/Documents/Data/PIV/260820_piv/calibration/processed/calibration_500um_1000001_260828_164450_metadata.json")
+
+    # flow_rate_csv_path = Path(
+    #     "/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/260930_221324_p-002_stitched_flow_rate_shifted.csv")
+    # velocity_csv_path = Path(
+    #     "/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/260930_221324_p-002_stitched_velocity_shifted.csv")
+
+    # arrow_painter = ArrowPainter(flow_rate_csv_path=flow_rate_csv_path,
+    #                              velocity_csv_path=velocity_csv_path,
+    #                              arrow_scale_px_per_m_s=8,
+    #                              label_color="white",
+    #                              arrow_linewidth_px=2,
+    #                              arrow_opacity=0.7
+    #                              )
+
+    # make_video(frames_dir=frames_dir,
+    #            #    frames_range=(1, 100),
+    #            scale_bar_calibration_path=calibration_path,
+    #            time_offset_s=0.01,
+    #            time_stretch_s_per_s=0.0005,
+    #            label_color="white",
+    #            processor=arrow_painter,)
+
+    # EXAMPLE 3: 49 droplets for consistency check
+    frames_dir = Path(
+        "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser")
     calibration_path = Path(
-        "/Users/tommieverouden/Documents/Data/PIV/260820_piv/calibration/processed/calibration_500um_1000001_260828_164450_metadata.json")
+        "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser/calibration/calibration_1mm_20251120_121553000001_251120_175434_metadata.json")
+    output_path = Path(
+        "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser/analysis")
 
-    flow_rate_csv_path = Path(
-        "/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/260930_221324_p-002_stitched_flow_rate_shifted.csv")
-    velocity_csv_path = Path(
-        "/Users/tommieverouden/Documents/Data/PIV/260820_piv/260828_163535_droplet_atomisation_campaign_reference/260930_221324_p-002_stitched_velocity_shifted.csv")
+    ellipse_sizer = EllipseSizer(
+        polarity="dark",
+        roi=(125, 225, 50, 150),
+        outline_color=255,
+        outline_thickness=2,
+    )
 
-    arrow_painter = ArrowPainter(flow_rate_csv_path=flow_rate_csv_path,
-                                 velocity_csv_path=velocity_csv_path,
-                                 arrow_scale_px_per_m_s=8,
-                                 label_color="white",
-                                 arrow_linewidth_px=2,
-                                 arrow_opacity=0.7
-                                 )
+    video_path = make_video(
+        frames_dir=frames_dir,
+        frame_number_digits=5,
+        scale_bar_calibration_path=calibration_path,
+        recording_frame_rate=0,
+        output_frame_rate=5,
+        crop_roi=(0, 0, 0, 200),
+        label_location="upper center",
+        label_font_size_px=36,
+        time_label_unit="Exp.",
+        time_label_location="prefix",
+        scale_bar_location="lower right",
+        scale_bar_length=5,
+        scale_bar_unit="mm",
+        label_location_offset=(0, 0),
+        show_preview=False,
+        confirm=True,
+        processor=ellipse_sizer,
+        output_path=output_path,)
 
-    make_video(frames_dir=frames_dir,
-               #    frames_range=(1, 100),
-               scale_bar_calibration_path=calibration_path,
-               time_offset_s=0.01,
-               time_stretch_s_per_s=0.0005,
-               label_color="white",
-               processor=arrow_painter,)
+    if video_path is not None and ellipse_sizer.csv_path is not None:
+        process_ellipse_data(ellipse_sizer.csv_path,
+                             plot_title="Droplet size at valve open")

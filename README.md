@@ -39,6 +39,13 @@ preview, contrast analysis, and encoded video all use the cropped image. Negativ
 coordinates count from the corresponding image edge, while a zero end coordinate
 means the full extent in that direction. The first numbered TIFF in the folder
 is labeled 0; later timestamps retain their offset from it.
+Set `recording_frame_rate=0` when each TIFF is a separate experiment with no
+time scale. This mode requires `output_frame_rate`; labels use each TIFF's
+frame number instead of a timestamp. `time_label_unit` is arbitrary label text
+in this mode (for example, `"exp."`). The common time units `"s"`, `"ms"`, and
+`"us"` are accepted but produce a warning because there is no time scale. Use
+`time_label_location="prefix"` to put the label text before the number (for
+example, `exp. 1`); the default `"suffix"` puts it after.
 The timestamp uses the bundled PT Sans font by default. Set `label_font_path`
 to a `.ttf` or `.otf` file, `label_font_size_px` to its pixel size, and
 `label_color` to `"black"`, `"white"`, `"gray"`/`"grey"`, or an integer from 0

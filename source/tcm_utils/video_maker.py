@@ -327,7 +327,11 @@ def _crop_frame(
     image: np.ndarray,
     roi: tuple[int, int, int, int] | None,
 ) -> np.ndarray:
-    """Crop one grayscale frame using (y_start, y_end, x_start, x_end)."""
+    """Crop one grayscale frame using (y_start, y_end, x_start, x_end).
+
+    If y_end or x_end is negative, they are interpreted as an offset from the
+    end of the image. If y_end or x_end is zero, it is interpreted as the full
+    extent in that direction."""
     if roi is None:
         return image
     if (

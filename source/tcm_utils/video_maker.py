@@ -977,6 +977,7 @@ def _show_frame_preview(
 def make_video(
     frames_dir: str | Path | Sequence[str | Path] | None = None,
     frames_range: tuple[int, int] | None = None,
+    frame_skip_factor: int = 1,
     frame_number_digits: int = 6,
     recording_frame_rate: float | None = None,
     time_offset_s: float | None = None,
@@ -1029,8 +1030,13 @@ def make_video(
         time_stretch_s_per_s: Playback seconds per second of recorded time. The
             default 0.002 makes 20,000-fps footage play at 40 fps while
             retaining every selected frame. ``None`` means real-time playback.
+        frame_skip_factor: Positive integer sampling factor. For example,
+            ``4`` keeps every fourth selected frame and reduces the derived
+            output frame rate by four.
         output_frame_rate: Explicit playback rate, overriding the rate derived
-            from the recording rate and time stretch.
+            from the recording rate and time stretch. When provided, this rate
+            remains fixed while ``frame_skip_factor`` reduces the encoded
+            frame count and video duration.
         time_label_unit: Unit for timestamps: ``"s"``, ``"ms"``, or ``"us"``.
             Timestamps are elapsed time from the first numbered TIFF in the
             folder, plus ``time_offset_s``. When ``recording_frame_rate=0``,
@@ -1188,6 +1194,12 @@ def make_video(
     ):
         raise ValueError("output_frame_rate must be positive or None")
     if (
+        isinstance(frame_skip_factor, bool)
+        or not isinstance(frame_skip_factor, int)
+        or frame_skip_factor < 1
+    ):
+        raise ValueError("frame_skip_factor must be a positive integer")
+    if (
         isinstance(label_font_size_px, bool)
         or not isinstance(label_font_size_px, int)
         or label_font_size_px <= 0
@@ -1280,6 +1292,7 @@ def make_video(
         frame_number_digits=frame_number_digits,
         require_contiguous=len(frames_dirs) > 1,
     )
+    numbered_paths = numbered_paths[::frame_skip_factor]
     if recording_frame_rate is None:
         recording_frame_rate = _get_recording_frame_rate(frames_dirs)
     elif (
@@ -1320,7 +1333,7 @@ def make_video(
     frame_rate = (
         output_frame_rate
         if output_frame_rate is not None
-        else recording_frame_rate * stretch
+        else recording_frame_rate * stretch / frame_skip_factor
     )
     frame_rate_text = format(frame_rate, ".12g")
 
@@ -1493,35 +1506,11 @@ def make_video(
     # Configure FFmpeg to read raw grayscale frames from stdin, retain their
     # dimensions and square pixels, and encode an H.264 MP4 with fast-start layout.
     command = [
-        ffmpeg,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-nostdin",
-        "-y",
-        "-f",
-        "rawvideo",
-        "-pixel_format",
-        "gray",
-        "-video_size",
-        f"{width}x{height}",
-        "-framerate",
-        frame_rate_text,
-        "-i",
-        "pipe:0",
-        "-an",
-        "-vf",
-        "format=yuv420p,setsar=1",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "18",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f",
+        "rawvideo", "-pixel_format", "gray", "-video_size", f"{width}x{height}",
+        "-framerate", frame_rate_text, "-i", "pipe:0", "-an", "-vf",
+        "format=yuv420p,setsar=1", "-c:v", "libx264", "-preset", "medium",
+        "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(temporary_path),
     ]
 
@@ -1712,41 +1701,121 @@ if __name__ == "__main__":
     #            label_color="white",
     #            processor=arrow_painter,)
 
-    # EXAMPLE 3: 49 droplets for consistency check
-    frames_dir = Path(
-        "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser")
-    calibration_path = Path(
-        "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser/calibration/calibration_1mm_20251120_121553000001_251120_175434_metadata.json")
-    output_path = Path(
-        "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser/analysis")
+    # # EXAMPLE 3: 49 droplets for consistency check
+    # frames_dir = Path(
+    #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser")
+    # calibration_path = Path(
+    #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser/calibration/calibration_1mm_20251120_121553000001_251120_175434_metadata.json")
+    # output_path = Path(
+    #     "/Users/tommieverouden/Documents/Data/Droplet atomisation/251118 Dripping droplets tests/timing_test_26ga_59500us_0-3mlpmn_moveddetectioncloser/analysis")
 
-    ellipse_sizer = EllipseSizer(
-        polarity="dark",
-        roi=(125, 225, 50, 150),
-        outline_color=255,
-        outline_thickness=2,
+    # ellipse_sizer = EllipseSizer(
+    #     polarity="dark",
+    #     roi=(125, 225, 50, 150),
+    #     outline_color=255,
+    #     outline_thickness=2,
+    # )
+
+    # video_path = make_video(
+    #     frames_dir=frames_dir,
+    #     frame_number_digits=5,
+    #     scale_bar_calibration_path=calibration_path,
+    #     recording_frame_rate=0,
+    #     output_frame_rate=5,
+    #     crop_roi=(0, 0, 0, 200),
+    #     label_location="upper center",
+    #     label_font_size_px=36,
+    #     time_label_unit="Exp.",
+    #     time_label_location="prefix",
+    #     scale_bar_location="lower right",
+    #     scale_bar_length=5,
+    #     scale_bar_unit="mm",
+    #     label_location_offset=(0, 0),
+    #     show_preview=False,
+    #     confirm=True,
+    #     processor=ellipse_sizer,
+    #     output_path=output_path,)
+
+    # if video_path is not None and ellipse_sizer.csv_path is not None:
+    #     process_ellipse_data(ellipse_sizer.csv_path,
+    #                          plot_title="Droplet size at valve open")
+
+    # # EXAMPLE 4: More PIV arrow drawing
+    # frames_dir = [
+    #     Path("/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/P-001a"),
+    #     Path("/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/P-001b"),
+    #     Path("/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/P-001c"),
+    #     Path("/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/P-001d"),
+    #     Path("/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/P-001e"),
+    #     Path("/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/P-001f"),
+    # ]
+
+    # calibration_path = Path(
+    #     "/Volumes/Data/PIV/260820_piv/calibration/processed/calibration_500um_1000001_260828_164450_metadata.json")
+    # flow_rate_csv_path = Path(
+    #     "/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/261028_192320_p-001_stitched_flow_rate_shifted.csv")
+    # velocity_csv_path = Path(
+    #     "/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough/261028_192320_p-001_stitched_velocity_shifted.csv")
+
+    # arrow_painter = ArrowPainter(flow_rate_csv_path=flow_rate_csv_path,
+    #                              velocity_csv_path=velocity_csv_path,
+    #                              arrow_scale_px_per_m_s=8,
+    #                              label_color="white",
+    #                              arrow_linewidth_px=2,
+    #                              arrow_opacity=0.7
+    #                              )
+
+    # make_video(frames_dir=frames_dir,
+    #            #    frames_range=(1, 100),
+    #            scale_bar_calibration_path=calibration_path,
+    #            time_offset_s=-0.046,
+    #            output_frame_rate=60,
+    #            frame_skip_factor=4,
+    #            label_color="white",
+    #            processor=arrow_painter,
+    #            confirm=False,
+    #            show_preview=False,
+    #            output_path=Path(
+    #                "/Volumes/Data/PIV/260820_piv/final/260910_173132_my_cough")
+    #            )
+
+    # # EXAMPLE 5: Nice cough
+    # frames_dir = '/Users/tommieverouden/Documents/Data/Film atomisation/Nick/c32_x0-0cm_P-001'
+    # calibration_path = '/Users/tommieverouden/Documents/Data/Film atomisation/Nick/calibration/Calibration1000um_261029_111246_metadata.json'
+    # make_video(frames_dir=frames_dir,
+    #            scale_bar_calibration_path=calibration_path,
+    #            time_stretch_s_per_s=0.004,
+    #            label_color="black",
+    #            label_location="lower left",
+    #            scale_bar_location="lower left",
+    #            stacked_label_mode="vertical reversed",
+    #            stacked_label_margin=48,
+    #            flip="horizontal",)
+
+    # EXAMPLE 6: viscoelastic droplets
+    # 1%
+    frames_dir = '/Users/tommieverouden/Documents/Data/Droplet atomisation/' \
+        '260213_viscoelastic_timing_tests/1wtpercent/P-004_Side_20000fps_16700 nsec'
+    # 1/8%
+    frames_dir = '/Users/tommieverouden/Documents/Data/Droplet atomisation/' \
+        '260213_viscoelastic_timing_tests/1_8wtpercent/P-001_Side_20000fps_16700 nsec'
+    # 1/32%
+    frames_dir = '/Users/tommieverouden/Documents/Data/Droplet atomisation/' \
+        '260213_viscoelastic_timing_tests/1_32wtpercent/P-002_Side_20000fps_16700 nsec'
+    # water
+    frames_dir = '/Users/tommieverouden/Documents/Data/Droplet atomisation/' \
+        '260211_timing_tests/P-006_Side_20000fps_20000 nsec'
+
+    make_video(
+        frames_dir=frames_dir,
+        time_stretch_s_per_s=0.002,
+        flip="horizontal",
+        crop_roi=(10, 0, 0, 0),
+        label_location="upper left",
+        label_location_offset=(0, 100),
+        show_preview=True,
+        time_offset_s=-0.0135,
     )
 
-    video_path = make_video(
-        frames_dir=frames_dir,
-        frame_number_digits=5,
-        scale_bar_calibration_path=calibration_path,
-        recording_frame_rate=0,
-        output_frame_rate=5,
-        crop_roi=(0, 0, 0, 200),
-        label_location="upper center",
-        label_font_size_px=36,
-        time_label_unit="Exp.",
-        time_label_location="prefix",
-        scale_bar_location="lower right",
-        scale_bar_length=5,
-        scale_bar_unit="mm",
-        label_location_offset=(0, 0),
-        show_preview=False,
-        confirm=True,
-        processor=ellipse_sizer,
-        output_path=output_path,)
-
-    if video_path is not None and ellipse_sizer.csv_path is not None:
-        process_ellipse_data(ellipse_sizer.csv_path,
-                             plot_title="Droplet size at valve open")
+    # TODO: All file names change spaces to underscores
+    # TODO: Auto save location should not be with the tiff files but one folder higher

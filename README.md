@@ -32,6 +32,14 @@ frames to an H.264 MP4. FFmpeg must be installed and available on `PATH`.
 Frame ranges refer to the trailing number before `.tif`/`.tiff` and include both
 endpoints. By default, the output frame rate is the recording rate multiplied by
 `time_stretch_s_per_s` (0.002 by default), and every selected frame is retained.
+Set `frame_skip_factor` to a positive integer to keep every Nth selected frame;
+for example, `frame_skip_factor=4` keeps every fourth frame and divides the
+derived output frame rate by four. An explicit `output_frame_rate` remains
+fixed, while the reduced frame count shortens the video by the same factor. For
+120 fps footage sped up by four times, use `time_stretch_s_per_s=4` and
+`frame_skip_factor=4` to encode at 120 fps rather than 480 fps. Likewise,
+`output_frame_rate=60` with `frame_skip_factor=4` produces a 60 fps video with
+one-quarter as many frames.
 Before sequence-wide contrast analysis, the default interactive flow previews
 the first selected frame with a timestamp and a quick per-frame contrast
 stretch. Set `crop_roi=(y_start, y_end, x_start, x_end)` to crop every frame; the

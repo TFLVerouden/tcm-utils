@@ -32,7 +32,8 @@ def detect_circle_centers(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Detect circle centers using binary thresholding and contours.
 
-    Returns (centers Nx2 array, binary image used).
+    Returns detected centers and a binary image made with the requested
+    settings. Automatic retries may use different settings for detection.
     """
     if roi_img.ndim != 2:
         roi_img = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
@@ -85,18 +86,27 @@ def detect_circle_centers(
         ]
 
     best_centers: np.ndarray | None = None
-    best_binary: np.ndarray | None = None
-    for inv_flag, adap_flag in attempts:
+    requested_binary: np.ndarray | None = None
+    for attempt_index, (inv_flag, adap_flag) in enumerate(attempts):
         centers_arr, binary_used = _run(inv_flag, adap_flag)
+        if requested_binary is None:
+            requested_binary = binary_used
         if best_centers is None or len(centers_arr) > len(best_centers):
-            best_centers, best_binary = centers_arr, binary_used
+            best_centers = centers_arr
         if len(centers_arr) > 0:
+            if attempt_index > 0:
+                print(
+                    "No circles detected with requested settings "
+                    f"(invert={invert}, adaptive={use_adaptive}); "
+                    "retry succeeded with "
+                    f"(invert={inv_flag}, adaptive={adap_flag})."
+                )
             break
     if best_centers is None:
         best_centers = np.empty((0, 2))
-    if best_binary is None:
-        best_binary = np.zeros_like(roi_img, dtype=np.uint8)
-    return best_centers, best_binary
+    if requested_binary is None:
+        requested_binary = np.zeros_like(roi_img, dtype=np.uint8)
+    return best_centers, requested_binary
 
 
 def _select_roi_colored(img_gray: np.ndarray, color=(255, 0, 255)) -> tuple[int, int, int, int]:
@@ -440,8 +450,8 @@ def run_calibration(
     loaded_image_path = data_file
 
     # Load image
-    img = load_image(data_file)
-    img = auto_brightness(img)
+    raw_img = load_image(data_file)
+    img = auto_brightness(raw_img.copy())
     img_h, img_w = img.shape[:2]
 
     # Print basic info
@@ -519,7 +529,8 @@ def run_calibration(
     mm_per_px = float(distance_mm) / spacing_px
 
     # Build visualization
-    vis = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
+    vis = cv.cvtColor(raw_img, cv.COLOR_GRAY2BGR)
+    vis[y: y + h, x: x + w] = cv.cvtColor(binary, cv.COLOR_GRAY2BGR)
     for (cxp, cyp) in centers:
         center_pt = (int(round(cxp)), int(round(cyp)))
         cv.circle(vis, center_pt, 3, (0, 0, 255), -1)
@@ -532,7 +543,8 @@ def run_calibration(
     plt.figure(figsize=(8, 6))
     plt.imshow(vis[..., ::-1])
     plt.title(
-        f"Circle grid: {cols}x{rows}\nSpacing ~ {spacing_px:.3f} px | Scale {mm_per_px:.6f} mm/px"
+        f"Circle grid: {cols}x{rows} (filtered ROI, invert={invert})\n"
+        f"Spacing ~ {spacing_px:.3f} px | Scale {mm_per_px:.6f} mm/px"
     )
     plt.axis("off")
     plt.tight_layout()
@@ -715,4 +727,4 @@ def ensure_calibration(
 
 
 if __name__ == "__main__":
-    run_calibration()
+    run_calibration(adaptive=True, invert=False, distance_mm=0.5, min_area=50)

@@ -210,7 +210,7 @@ def ask_directory(
     default_dir: Path | None = None,
     start: Path | None = None,
     multiple: Literal[False] = False,
-) -> Path | None:
+) -> Path:
     ...
 
 
@@ -221,7 +221,7 @@ def ask_directory(
     default_dir: Path | None = None,
     start: Path | None = None,
     multiple: Literal[True] = True,
-) -> list[Path] | None:
+) -> list[Path]:
     ...
 
 
@@ -231,7 +231,7 @@ def ask_directory(
     default_dir: Path | None = None,
     start: Path | None = None,
     multiple: bool = False,
-) -> Path | list[Path] | None:
+) -> Path | list[Path]:
     """Ask the user to select a directory.
 
     Works like :func:`ask_open_file`, but uses a directory picker and remembers
@@ -298,7 +298,7 @@ def ask_directory(
         root.destroy()
 
         if not selected:
-            return None
+            raise RuntimeError("No directory selected.")
 
         chosen_path = Path(selected).expanduser().resolve()
         print(f"Selected directory: {chosen_path}")
@@ -330,7 +330,7 @@ def ask_directory(
     root.destroy()
 
     if not selected_paths:
-        return None
+        raise RuntimeError("No directories selected.")
 
     if config_state is not None and key is not None:
         config_path, config = config_state

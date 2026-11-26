@@ -874,6 +874,30 @@ def pdf_to_png(
     return png_path
 
 
+def export_all_pdfs_to_pngs_in_directory(directory: Path, prefix: str = "plot"):
+    """Search for all PDF files in the specified directory and its subfolder,
+    convert them to PNG format, and save them in the original location,
+    but in a subfolder named '{prefix}_pngs'. So each subdirectory that
+    contained PDF files, will have its own '{prefix}_pngs' subfolder with the
+    converted PNG files.
+    """
+
+    if not directory.is_dir():
+        raise ValueError(f"Provided path is not a directory: {directory}")
+
+    for pdf_path in directory.rglob("*.pdf"):
+        relative_path = pdf_path.relative_to(directory)
+        output_subdir = directory / relative_path.parent / f"{prefix}_pngs"
+        output_subdir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            png_path = pdf_to_png(pdf_path)
+            shutil.move(str(png_path), str(output_subdir / png_path.name))
+            print(f"Converted {pdf_path} to {output_subdir / png_path.name}")
+        except Exception as e:
+            print(f"Failed to convert {pdf_path}: {e}")
+
+
 def load_images(
     image_paths: Sequence[str | Path],
     *,
